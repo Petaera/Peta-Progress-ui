@@ -13,6 +13,7 @@ import supabase from "@/utils/supabase";
 import TaskCard from "@/components/TaskCard";
 import AvailabilityToggle from "@/components/AvailabilityToggle";
 import DailyLogForm from "@/components/DailyLogForm";
+import PerformanceReport from "@/components/PerformanceReport";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 const Dashboard = () => {
@@ -93,11 +94,23 @@ const Dashboard = () => {
         promises.push(Promise.resolve({ data: null }));
       }
 
-      // Fetch tasks
+      // Fetch tasks with work allotment information
       promises.push(
         supabase
           .from('tasks')
-          .select('id, title, description, status, allotment_id')
+          .select(`
+            id, 
+            title, 
+            description, 
+            status, 
+            allotment_id,
+            created_at,
+            work_allotments (
+              id,
+              title,
+              description
+            )
+          `)
           .eq('user_id', authUser.id)
           .limit(10)
           .order('created_at', { ascending: false })
@@ -474,8 +487,9 @@ const Dashboard = () => {
         <Tabs defaultValue="tasks" className="space-y-4">
           <TabsList>
             <TabsTrigger value="tasks">My Tasks</TabsTrigger>
+            <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="log">Daily Log</TabsTrigger>
-              <TabsTrigger value="requests">Join Requests</TabsTrigger>
+            <TabsTrigger value="requests">Join Requests</TabsTrigger>
           </TabsList>
 
           <TabsContent value="tasks" className="space-y-4">
@@ -492,17 +506,36 @@ const Dashboard = () => {
                       task={{
                         id: task.id,
                         title: task.title,
-                        description: task.description,
+                        description: task.description || '',
                         status: task.status,
                         allotment: task.work_allotments?.title || 'No Allotment'
-                      }} 
+                      }}
+                      onTaskUpdated={fetchUserData}
                     />
                   ))
                 ) : (
-                  <p className="text-muted-foreground text-center py-8">
-                    No tasks assigned yet.
-                  </p>
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground mb-2">No tasks assigned yet.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Tasks will appear here once your admin assigns them to you.
+                    </p>
+                  </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="performance" className="space-y-4">
+            <Card className="shadow-soft">
+              <CardHeader>
+                <CardTitle>Performance Evaluation</CardTitle>
+                <CardDescription>Track your productivity and performance metrics</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <PerformanceReport 
+                  userId={authUser?.id || ''}
+                  organizationId={user?.organization_id}
+                />
               </CardContent>
             </Card>
           </TabsContent>

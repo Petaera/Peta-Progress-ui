@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Circle, Clock } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import supabase from "@/utils/supabase";
 
 interface Task {
   id: string;
@@ -13,9 +16,69 @@ interface Task {
 
 interface TaskCardProps {
   task: Task;
+  onTaskUpdated?: () => void;
 }
 
-const TaskCard = ({ task }: TaskCardProps) => {
+const TaskCard = ({ task, onTaskUpdated }: TaskCardProps) => {
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const updateTaskStatus = async (newStatus: "todo" | "in_progress" | "done") => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: newStatus })
+        .eq('id', task.id);
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Task updated",
+        description: `Task status changed to ${newStatus.replace('_', ' ')}`,
+      });
+
+      if (onTaskUpdated) {
+        onTaskUpdated();
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed to update task",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getNextStatus = (): "todo" | "in_progress" | "done" | null => {
+    switch (task.status) {
+      case "todo":
+        return "in_progress";
+      case "in_progress":
+        return "done";
+      case "done":
+        return null; // No next status for completed tasks
+      default:
+        return "in_progress";
+    }
+  };
+
+  const getStatusButtonText = () => {
+    switch (task.status) {
+      case "todo":
+        return "Start Task";
+      case "in_progress":
+        return "Mark Complete";
+      case "done":
+        return "Completed";
+      default:
+        return "Update Status";
+    }
+  };
   const statusConfig = {
     todo: {
       label: "To Do",
@@ -59,13 +122,27 @@ const TaskCard = ({ task }: TaskCardProps) => {
           </Badge>
           
           <div className="flex gap-2">
-            <Button 
-              size="sm" 
-              variant={task.status === "in_progress" ? "default" : "outline"}
-              className="h-7 px-3 text-xs"
-            >
-              {task.status === "done" ? "Completed" : "Update Status"}
-            </Button>
+            {task.status !== "done" && (
+              <Button 
+                size="sm" 
+                variant={task.status === "in_progress" ? "default" : "outline"}
+                className="h-7 px-3 text-xs"
+                onClick={() => {
+                  const nextStatus = getNextStatus();
+                  if (nextStatus) {
+                    updateTaskStatus(nextStatus);
+                  }
+                }}
+                disabled={loading}
+              >
+                {loading ? "Updating..." : getStatusButtonText()}
+              </Button>
+            )}
+            {task.status === "done" && (
+              <Badge variant="outline" className="h-7 px-3 text-xs">
+                ✓ Completed
+              </Badge>
+            )}
           </div>
         </div>
       </div>

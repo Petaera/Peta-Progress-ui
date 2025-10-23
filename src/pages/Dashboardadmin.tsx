@@ -30,13 +30,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import supabase from "@/utils/supabase";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import InviteUserForm from "@/components/InviteUserForm";
-import CreateOrganizationForm from "@/components/CreateOrganizationForm";
 import CreateDepartmentForm from "@/components/CreateDepartmentForm";
 import EditUserForm from "@/components/EditUserForm";
+import EditOrganizationForm from "@/components/EditOrganizationForm";
+import TaskAssignmentForm from "@/components/TaskAssignmentForm";
+import CreateWorkAllotmentForm from "@/components/CreateWorkAllotmentForm";
+import PerformanceReport from "@/components/PerformanceReport";
 
 interface Organization {
   id: string;
   name: string;
+  description?: string;
   created_at: string;
 }
 
@@ -177,30 +181,6 @@ const AdminDashboard = () => {
         description: error.message || "Please try again.",
         variant: "destructive",
       });
-    }
-  };
-
-  const handleOrganizationCreated = async (newOrganization: any) => {
-    try {
-      // Update admin's profile with the new organization
-      const { error } = await supabase
-        .from('profiles')
-        .update({ organization_id: newOrganization.id })
-        .eq('id', authUser?.id);
-
-      if (error) {
-        console.error('Error updating admin profile:', error);
-        toast({
-          title: "Warning",
-          description: "Organization created but failed to update your profile. Please refresh the page.",
-          variant: "destructive",
-        });
-      } else {
-        // Refresh the admin data
-        await fetchAdminData();
-      }
-    } catch (error: any) {
-      console.error('Error handling organization creation:', error);
     }
   };
 
@@ -360,35 +340,84 @@ const AdminDashboard = () => {
                     <Dialog>
                       <DialogTrigger asChild>
                         <Button className="w-full justify-start" variant="outline">
-                          <Building2 className="h-4 w-4 mr-2" />
-                          Create Organization
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create Work Allotment
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Create New Organization</DialogTitle>
+                          <DialogTitle>Create New Work Allotment</DialogTitle>
                           <DialogDescription>
-                            Create a new organization and become its administrator
+                            Create a new project or work allocation
                           </DialogDescription>
                         </DialogHeader>
-                        <CreateOrganizationForm 
-                          onOrganizationCreated={handleOrganizationCreated}
+                        <CreateWorkAllotmentForm 
+                          organizationId={organization?.id || ''}
+                          departments={departments}
+                          onWorkAllotmentCreated={fetchAdminData}
                         />
                       </DialogContent>
                     </Dialog>
-                    <Button className="w-full justify-start" variant="outline">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create Work Allotment
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline">
-                      <Building2 className="h-4 w-4 mr-2" />
-                      Add Department
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline">
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Invite User
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline">
+
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button className="w-full justify-start" variant="outline">
+                          <Building2 className="h-4 w-4 mr-2" />
+                          Add Department
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Create New Department</DialogTitle>
+                          <DialogDescription>
+                            Add a new department to your organization
+                          </DialogDescription>
+                        </DialogHeader>
+                        <CreateDepartmentForm 
+                          organizationId={organization?.id || ''}
+                          onDepartmentCreated={fetchAdminData}
+                        />
+                      </DialogContent>
+                    </Dialog>
+
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button className="w-full justify-start" variant="outline">
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Invite User
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Invite User to Organization</DialogTitle>
+                          <DialogDescription>
+                            Send an invitation to a user to join your organization
+                          </DialogDescription>
+                        </DialogHeader>
+                        <InviteUserForm 
+                          organizationId={organization?.id} 
+                          departments={departments}
+                          onInviteSent={() => {
+                            toast({
+                              title: "Invitation sent",
+                              description: "The user has been invited to join your organization.",
+                            });
+                          }}
+                        />
+                      </DialogContent>
+                    </Dialog>
+
+                    <Button 
+                      className="w-full justify-start" 
+                      variant="outline"
+                      onClick={() => {
+                        // Navigate to users tab to show performance overview
+                        const usersTab = document.querySelector('[value="users"]') as HTMLElement;
+                        if (usersTab) {
+                          usersTab.click();
+                        }
+                      }}
+                    >
                       <BarChart3 className="h-4 w-4 mr-2" />
                       View Reports
                     </Button>
@@ -400,47 +429,49 @@ const AdminDashboard = () => {
             <TabsContent value="organizations" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Organizations</CardTitle>
-                  <CardDescription>Manage your organizations</CardDescription>
+                  <CardTitle>Organization Settings</CardTitle>
+                  <CardDescription>Manage your organization details</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div className="flex justify-end">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button>
-                            <Plus className="h-4 w-4 mr-2" />
-                            Create Organization
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Create New Organization</DialogTitle>
-                            <DialogDescription>
-                              Create a new organization and become its administrator
-                            </DialogDescription>
-                          </DialogHeader>
-                          <CreateOrganizationForm 
-                            onOrganizationCreated={handleOrganizationCreated}
-                          />
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                    
                     {organization ? (
-                      <div className="p-4 border rounded-lg bg-muted/50">
-                        <h4 className="font-medium">Current Organization:</h4>
-                        <p className="text-sm text-muted-foreground">
-                          <strong>Name:</strong> {organization.name}<br/>
-                          <strong>Created:</strong> {new Date(organization.created_at).toLocaleDateString()}<br/>
-                          <strong>ID:</strong> {organization.id}
-                        </p>
+                      <div className="space-y-4">
+                        <div className="p-4 border rounded-lg bg-muted/50">
+                          <h4 className="font-medium mb-2">Current Organization:</h4>
+                          <p className="text-sm text-muted-foreground">
+                            <strong>Name:</strong> {organization.name}<br/>
+                            <strong>Description:</strong> {organization.description || 'No description'}<br/>
+                            <strong>Created:</strong> {new Date(organization.created_at).toLocaleDateString()}<br/>
+                            <strong>ID:</strong> {organization.id}
+                          </p>
+                        </div>
+                        
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button className="w-full">
+                              <Settings className="h-4 w-4 mr-2" />
+                              Edit Organization
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Edit Organization</DialogTitle>
+                              <DialogDescription>
+                                Update your organization's name and description
+                              </DialogDescription>
+                            </DialogHeader>
+                            <EditOrganizationForm 
+                              organization={organization}
+                              onOrganizationUpdated={fetchAdminData}
+                            />
+                          </DialogContent>
+                        </Dialog>
                       </div>
                     ) : (
                       <div className="text-center py-8">
                         <p className="text-muted-foreground">No organization found.</p>
                         <p className="text-sm text-muted-foreground mt-2">
-                          Create an organization to start managing your team.
+                          Please contact your system administrator to assign you to an organization.
                         </p>
                       </div>
                     )}
@@ -457,6 +488,42 @@ const AdminDashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
+                    {/* Performance Overview */}
+                    <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <BarChart3 className="h-5 w-5 text-blue-600" />
+                          Team Performance Overview
+                        </CardTitle>
+                        <CardDescription>Quick overview of your team's performance metrics</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="text-center p-4 bg-white rounded-lg border">
+                            <div className="text-2xl font-bold text-green-600">
+                              {users.filter(u => u.availability_status === 'available').length}
+                            </div>
+                            <div className="text-sm text-muted-foreground">Active Users</div>
+                          </div>
+                          <div className="text-center p-4 bg-white rounded-lg border">
+                            <div className="text-2xl font-bold text-blue-600">
+                              {Math.round((users.filter(u => u.availability_status === 'available').length / users.length) * 100) || 0}%
+                            </div>
+                            <div className="text-sm text-muted-foreground">Availability Rate</div>
+                          </div>
+                          <div className="text-center p-4 bg-white rounded-lg border">
+                            <div className="text-2xl font-bold text-purple-600">
+                              {departments.length}
+                            </div>
+                            <div className="text-sm text-muted-foreground">Departments</div>
+                          </div>
+                        </div>
+                        <div className="mt-4 text-xs text-muted-foreground">
+                          <p>💡 Click "Performance" next to any user to view detailed metrics and analytics</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
                     <div className="flex justify-end gap-2">
                       <Button 
                         variant="outline"
@@ -538,24 +605,46 @@ const AdminDashboard = () => {
                           </TableCell>
                           <TableCell>{new Date(user.last_seen).toLocaleDateString()}</TableCell>
                           <TableCell>
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button size="sm" variant="outline">Edit</Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>Edit User</DialogTitle>
-                                  <DialogDescription>
-                                    Update user's role and department assignment
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <EditUserForm 
-                                  user={user}
-                                  departments={departments}
-                                  onUserUpdated={fetchAdminData}
-                                />
-                              </DialogContent>
-                            </Dialog>
+                            <div className="flex gap-2">
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button size="sm" variant="outline">Edit</Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Edit User Department</DialogTitle>
+                                    <DialogDescription>
+                                      Update user's department assignment
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <EditUserForm 
+                                    user={user}
+                                    departments={departments}
+                                    onUserUpdated={fetchAdminData}
+                                  />
+                                </DialogContent>
+                              </Dialog>
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button size="sm" variant="secondary">
+                                    <BarChart3 className="h-4 w-4 mr-1" />
+                                    Performance
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                                  <DialogHeader>
+                                    <DialogTitle>Performance Report - {user.full_name}</DialogTitle>
+                                    <DialogDescription>
+                                      View detailed performance metrics and analytics for {user.full_name}
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <PerformanceReport 
+                                    userId={user.id}
+                                    organizationId={organization?.id}
+                                  />
+                                </DialogContent>
+                              </Dialog>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -648,48 +737,11 @@ const AdminDashboard = () => {
                               Create a new project or work allocation
                             </DialogDescription>
                           </DialogHeader>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="allotment-title">Title</Label>
-                              <Input id="allotment-title" placeholder="Q4 Website Redesign" />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="allotment-description">Description</Label>
-                              <Textarea id="allotment-description" placeholder="Redesign the company website" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="target-hours">Target Hours</Label>
-                                <Input id="target-hours" type="number" placeholder="100" />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="department">Department</Label>
-                                <Select>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select department" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {departments.map((dept) => (
-                                      <SelectItem key={dept.id} value={dept.id}>
-                                        {dept.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="start-date">Start Date</Label>
-                                <Input id="start-date" type="date" />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="end-date">End Date</Label>
-                                <Input id="end-date" type="date" />
-                              </div>
-                            </div>
-                            <Button className="w-full">Create Work Allotment</Button>
-                          </div>
+                          <CreateWorkAllotmentForm 
+                            organizationId={organization?.id || ''}
+                            departments={departments}
+                            onWorkAllotmentCreated={fetchAdminData}
+                          />
                         </DialogContent>
                       </Dialog>
                     </div>
@@ -737,43 +789,71 @@ const AdminDashboard = () => {
                   <CardDescription>Manage all tasks across your organization</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Assigned To</TableHead>
-                        <TableHead>Work Allotment</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Created</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {tasks.map((task) => (
-                        <TableRow key={task.id}>
-                          <TableCell className="font-medium">{task.title}</TableCell>
-                          <TableCell>
-                            {users.find(u => u.id === task.user_id)?.full_name || 'Unknown'}
-                          </TableCell>
-                          <TableCell>
-                            {workAllotments.find(w => w.id === task.allotment_id)?.title || 'Unknown'}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={
-                              task.status === 'done' ? 'default' : 
-                              task.status === 'in_progress' ? 'secondary' : 'outline'
-                            }>
-                              {task.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{new Date(task.created_at).toLocaleDateString()}</TableCell>
-                          <TableCell>
-                            <Button size="sm" variant="outline">Edit</Button>
-                          </TableCell>
+                  <div className="space-y-4">
+                    <div className="flex justify-end">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Task
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                          <DialogHeader>
+                            <DialogTitle>Create and Assign Task</DialogTitle>
+                            <DialogDescription>
+                              Create a new task and assign it to users with monthly hour allocations
+                            </DialogDescription>
+                          </DialogHeader>
+                          <TaskAssignmentForm 
+                            organizationId={organization?.id || ''}
+                            workAllotments={workAllotments}
+                            departments={departments}
+                            users={users}
+                            onTaskCreated={fetchAdminData}
+                          />
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                    
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Title</TableHead>
+                          <TableHead>Assigned To</TableHead>
+                          <TableHead>Work Allotment</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Created</TableHead>
+                          <TableHead>Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {tasks.map((task) => (
+                          <TableRow key={task.id}>
+                            <TableCell className="font-medium">{task.title}</TableCell>
+                            <TableCell>
+                              {users.find(u => u.id === task.user_id)?.full_name || 'Unknown'}
+                            </TableCell>
+                            <TableCell>
+                              {workAllotments.find(w => w.id === task.allotment_id)?.title || 'Unknown'}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={
+                                task.status === 'done' ? 'default' : 
+                                task.status === 'in_progress' ? 'secondary' : 'outline'
+                              }>
+                                {task.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{new Date(task.created_at).toLocaleDateString()}</TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="outline">Edit</Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

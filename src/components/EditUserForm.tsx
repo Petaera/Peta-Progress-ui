@@ -21,8 +21,6 @@ interface EditUserFormProps {
 }
 
 const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFormProps) => {
-  const [fullName, setFullName] = useState(user.full_name || '');
-  const [role, setRole] = useState(user.role || 'user');
   const [departmentId, setDepartmentId] = useState(user.department_id || "none");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -30,13 +28,11 @@ const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFor
   const updateUser = async () => {
     setLoading(true);
     try {
-      console.log('Updating user:', { id: user.id, fullName, role, departmentId });
+      console.log('Updating user department:', { id: user.id, departmentId });
       
       const { data, error } = await supabase
         .from('profiles')
         .update({
-          full_name: fullName.trim(),
-          role: role,
           department_id: departmentId === "none" ? null : departmentId || null
         })
         .eq('id', user.id)
@@ -44,15 +40,15 @@ const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFor
         .single();
 
       if (error) {
-        console.error('Error updating user:', error);
+        console.error('Error updating user department:', error);
         throw error;
       }
 
-      console.log('User updated:', data);
+      console.log('User department updated:', data);
 
       toast({
-        title: "User updated",
-        description: `User "${fullName}" has been updated successfully.`,
+        title: "Department updated",
+        description: `Department assignment for "${user.full_name}" has been updated successfully.`,
       });
 
       onUserUpdated();
@@ -61,9 +57,9 @@ const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFor
         onClose();
       }
     } catch (error: any) {
-      console.error('Failed to update user:', error);
+      console.error('Failed to update user department:', error);
       toast({
-        title: "Failed to update user",
+        title: "Failed to update department",
         description: error.message || "Please try again.",
         variant: "destructive",
       });
@@ -89,23 +85,22 @@ const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFor
         <Label htmlFor="user-name">Full Name</Label>
         <Input 
           id="user-name" 
-          placeholder="Enter full name" 
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
+          value={user.full_name || 'Not provided'}
+          disabled
+          className="bg-muted"
         />
+        <p className="text-xs text-muted-foreground">Name cannot be changed by admin</p>
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="user-role">Role</Label>
-        <Select value={role} onValueChange={setRole}>
-          <SelectTrigger id="user-role">
-            <SelectValue placeholder="Select role" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="user">User</SelectItem>
-            <SelectItem value="admin">Admin</SelectItem>
-          </SelectContent>
-        </Select>
+        <Input 
+          id="user-role" 
+          value={user.role}
+          disabled
+          className="bg-muted"
+        />
+        <p className="text-xs text-muted-foreground">Role cannot be changed by admin</p>
       </div>
 
       <div className="space-y-2">
@@ -127,16 +122,16 @@ const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFor
 
       <Button 
         onClick={updateUser} 
-        disabled={loading || !fullName.trim()}
+        disabled={loading}
         className="w-full"
       >
-        {loading ? "Updating User..." : "Update User"}
+        {loading ? "Updating Department..." : "Update Department"}
       </Button>
 
       <div className="text-xs text-muted-foreground">
-        <p>• Update user's role and department assignment</p>
-        <p>• Admin role grants full organization access</p>
-        <p>• User role limits access to assigned tasks</p>
+        <p>• Only department assignment can be changed</p>
+        <p>• Name and role are managed by the user or system administrator</p>
+        <p>• Department assignment affects task visibility and organization structure</p>
       </div>
     </div>
   );
