@@ -18,7 +18,7 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
   const [loading, setLoading] = useState(false);
   const [userFound, setUserFound] = useState<any>(null);
   const [searching, setSearching] = useState(false);
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('none');
+  // Department assignment is not supported at invite time because join_requests has no department_id
   const { toast } = useToast();
 
   console.log('InviteUserForm props:', { organizationId, onInviteSent, onClose });
@@ -75,17 +75,20 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
     console.log('Sending invitation for:', { userFound, organizationId });
     setLoading(true);
     try {
-      // Check if invitation already exists
-      const { data: existingRequest, error: checkError } = await supabase
+      // Check the most recent invitation (if any) for this user/org
+      const { data: existingRequests, error: checkError } = await supabase
         .from('join_requests')
         .select('id, status')
         .eq('user_id', userFound.id)
         .eq('organization_id', organizationId)
-        .maybeSingle();
+        .order('created_at', { ascending: false })
+        .limit(1);
 
       if (checkError) {
         console.error('Error checking existing request:', checkError);
       }
+
+      const existingRequest = existingRequests && existingRequests[0] ? existingRequests[0] : null;
 
       if (existingRequest) {
         if (existingRequest.status === 'pending') {
@@ -95,13 +98,28 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
             variant: "destructive",
           });
           return;
-        } else if (existingRequest.status === 'approved') {
-          toast({
-            title: "User already approved",
-            description: "This user has already been approved to join.",
-            variant: "destructive",
-          });
-          return;
+        } else {
+          // Re-send by updating the last request back to pending
+          const { error: updateErr } = await supabase
+            .from('join_requests')
+            .update({
+              status: 'pending',
+              created_at: new Date().toISOString(),
+            })
+            .eq('id', existingRequest.id);
+          if (updateErr) {
+            console.error('Error updating existing request:', updateErr);
+          } else {
+            toast({
+              title: "Invitation re-sent",
+              description: `Re-sent invitation to ${userFound.full_name || userFound.email}`,
+            });
+            onInviteSent();
+            setEmail('');
+            setUserFound(null);
+            if (onClose) onClose();
+            return;
+          }
         }
       }
 
@@ -112,7 +130,6 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
         .insert({
           user_id: userFound.id,
           organization_id: organizationId,
-          department_id: selectedDepartmentId === 'none' ? null : selectedDepartmentId,
           status: 'pending'
         })
         .select();
@@ -180,23 +197,6 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
           
           {!userFound.organization_id && (
             <div className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="invite-department">Assign Department (Optional)</Label>
-                <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
-                  <SelectTrigger id="invite-department">
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No Department</SelectItem>
-                    {departments.map((dept) => (
-                      <SelectItem key={dept.id} value={dept.id}>
-                        {dept.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
               <Button 
                 onClick={() => {
                   console.log('Send invitation button clicked');

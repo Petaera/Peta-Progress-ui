@@ -48,6 +48,7 @@ const TaskAssignmentForm = ({
 }: TaskAssignmentFormProps) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [targetHours, setTargetHours] = useState<string>('0');
   const [selectedAllotmentId, setSelectedAllotmentId] = useState('');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('all');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -91,6 +92,15 @@ const TaskAssignmentForm = ({
       });
       return;
     }
+    const hoursNumber = Number(targetHours);
+    if (isNaN(hoursNumber) || hoursNumber < 0) {
+      toast({
+        title: "Invalid hours",
+        description: "Please enter a valid number for target hours (>= 0).",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -100,7 +110,8 @@ const TaskAssignmentForm = ({
         selectedAllotmentId,
         organizationId,
         selectedUsers,
-        monthlyHours
+        monthlyHours,
+        targetHours: hoursNumber
       });
 
       // Create tasks for each selected user
@@ -114,7 +125,8 @@ const TaskAssignmentForm = ({
             organization_id: organizationId,
             title: title.trim(),
             description: description.trim() || null,
-            status: 'todo'
+            status: 'todo',
+            hours: hoursNumber
           })
           .select()
           .single();
@@ -142,6 +154,7 @@ const TaskAssignmentForm = ({
       // Reset form
       setTitle('');
       setDescription('');
+      setTargetHours('0');
       setSelectedAllotmentId('');
       setSelectedDepartmentId('all');
       setSelectedUsers([]);
@@ -187,6 +200,19 @@ const TaskAssignmentForm = ({
             rows={3}
           />
         </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="task-hours">Target Hours</Label>
+        <Input
+          id="task-hours"
+          type="number"
+          min="0"
+          step="0.25"
+          value={targetHours}
+          onChange={(e) => setTargetHours(e.target.value)}
+          placeholder="e.g., 4"
+        />
+      </div>
 
         <div className="space-y-2">
           <Label htmlFor="work-allotment">Work Allotment *</Label>

@@ -26,6 +26,8 @@ const Dashboard = () => {
     completedTasks: 0,
     hoursLogged: 0,
     hoursTarget: 0,
+    teamAvailable: 0,
+    teamTotal: 0,
   });
   const [loading, setLoading] = useState(true);
   
@@ -36,6 +38,7 @@ const Dashboard = () => {
   useEffect(() => {
     let isMounted = true;
     let timeoutId: NodeJS.Timeout;
+    let channel: any;
 
     const loadData = async () => {
       if (authUser && isMounted) {
@@ -46,10 +49,27 @@ const Dashboard = () => {
     // Add a small delay to prevent rapid re-renders
     timeoutId = setTimeout(loadData, 100);
 
+    // Realtime: reflect join_requests changes instantly for this user
+    if (authUser) {
+      channel = supabase
+        .channel(`realtime-user-${authUser.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'join_requests', filter: `user_id=eq.${authUser.id}` },
+          () => {
+            fetchUserData();
+          }
+        )
+        .subscribe();
+    }
+
     return () => {
       isMounted = false;
       if (timeoutId) {
         clearTimeout(timeoutId);
+      }
+      if (channel) {
+        supabase.removeChannel(channel);
       }
     };
   }, [authUser?.id]); // Only depend on user ID, not the entire user object
@@ -94,7 +114,19 @@ const Dashboard = () => {
         promises.push(Promise.resolve({ data: null }));
       }
 
-      // Fetch tasks with work allotment information
+      // Fetch team members in the same department (for team status)
+      if (profile.department_id) {
+        promises.push(
+          supabase
+            .from('profiles')
+            .select('id, availability_status')
+            .eq('department_id', profile.department_id)
+        );
+      } else {
+        promises.push(Promise.resolve({ data: [] }));
+      }
+
+      // Fetch tasks with work allotment information and hours
       promises.push(
         supabase
           .from('tasks')
@@ -104,6 +136,7 @@ const Dashboard = () => {
             description, 
             status, 
             allotment_id,
+            hours,
             created_at,
             work_allotments (
               id,
@@ -134,7 +167,7 @@ const Dashboard = () => {
       );
 
       const results = await Promise.all(promises);
-      const [orgResult, deptResult, tasksResult, logsResult, requestsResult] = results;
+      const [orgResult, deptResult, teamResult, tasksResult, logsResult, requestsResult] = results;
 
       // Update user with organization and department data
       const updatedUser = {
@@ -148,6 +181,9 @@ const Dashboard = () => {
       const userTasks = tasksResult.data || [];
       const logs = logsResult.data || [];
       const requests = requestsResult.data || [];
+      const teamMembers = (teamResult?.data as Array<{ id: string; availability_status: string }>) || [];
+      const teamTotal = teamMembers.length;
+      const teamAvailable = teamMembers.filter(m => m.availability_status === 'available').length;
       setTasks(userTasks);
       setJoinRequests(requests);
 
@@ -160,6 +196,8 @@ const Dashboard = () => {
         completedTasks,
         hoursLogged: totalHours,
         hoursTarget: 40,
+        teamAvailable,
+        teamTotal,
       });
 
     } catch (error: any) {
@@ -263,7 +301,15 @@ const Dashboard = () => {
         throw error;
       }
 
+      // Update local availability and team status immediately for responsive UI
       setIsAvailable(available);
+      setStats(prev => {
+        const wasAvailable = !available; // because toggle just flipped
+        const delta = available ? 1 : -1;
+        // Guard against negative
+        const newAvailable = Math.max(0, (prev.teamAvailable || 0) + delta);
+        return { ...prev, teamAvailable: newAvailable } as any;
+      });
       toast({
         title: available ? "You're now available" : "You're now unavailable",
         description: "Your status has been updated.",
@@ -294,7 +340,7 @@ const Dashboard = () => {
     }
   };
 
-  const handleJoinRequest = async (requestId: string, action: 'approved' | 'rejected') => {
+  const handleJoinRequest = async (requestId: string, action: 'approved' | 'denied') => {
     try {
       const { error } = await supabase
         .from('join_requests')
@@ -312,8 +358,7 @@ const Dashboard = () => {
           const { error: updateError } = await supabase
             .from('profiles')
             .update({ 
-              organization_id: request.organization_id,
-              department_id: request.department_id
+              organization_id: request.organization_id
             })
             .eq('id', authUser?.id);
 
@@ -328,7 +373,7 @@ const Dashboard = () => {
         });
       } else {
         toast({
-          title: "Request declined",
+          title: "Request denied",
           description: "You have declined the organization invitation.",
         });
       }
@@ -477,7 +522,7 @@ const Dashboard = () => {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">8/12</div>
+              <div className="text-2xl font-bold">{stats.teamAvailable}/{stats.teamTotal}</div>
               <p className="text-xs text-muted-foreground mt-1">Members available</p>
             </CardContent>
           </Card>
@@ -508,8 +553,10 @@ const Dashboard = () => {
                         title: task.title,
                         description: task.description || '',
                         status: task.status,
-                        allotment: task.work_allotments?.title || 'No Allotment'
+                        allotment: task.work_allotments?.title || 'No Allotment',
+                        hours: typeof task.hours === 'number' ? task.hours : Number(task.hours) || 0,
                       }}
+                      userId={authUser?.id || ''}
                       onTaskUpdated={fetchUserData}
                     />
                   ))
@@ -567,6 +614,36 @@ const Dashboard = () => {
                 <CardDescription>Manage your organization join requests</CardDescription>
                 </CardHeader>
                 <CardContent>
+                {user?.organization_id && (
+                  <div className="mb-4 flex justify-end">
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          // Find organization admin email(s)
+                          const { data: admins, error: adminErr } = await supabase
+                            .from('profiles')
+                            .select('email')
+                            .eq('organization_id', user.organization_id)
+                            .eq('role', 'admin');
+                          if (adminErr) throw adminErr;
+
+                          const adminEmail = admins && admins.length > 0 ? admins[0].email : '';
+                          const mailto = `mailto:${encodeURIComponent(adminEmail || '')}?subject=${encodeURIComponent('Request to leave organization')}&body=${encodeURIComponent(`Hello Admin,%0D%0A%0D%0AI would like to leave the organization. Please remove my access from the system.%0D%0A%0D%0AUser: ${user.full_name || user.email}%0D%0AEmail: ${user.email}%0D%0AUser ID: ${user.id}%0D%0A%0D%0AThank you.`)}`;
+                          window.location.href = mailto;
+                        } catch (e) {
+                          toast({
+                            title: 'Unable to prepare email',
+                            description: 'Please contact your admin to leave the organization.',
+                            variant: 'destructive',
+                          });
+                        }
+                      }}
+                    >
+                      Leave Organization (Email Admin)
+                    </Button>
+                  </div>
+                )}
                 {joinRequests.length > 0 ? (
                   <div className="space-y-4">
                     {joinRequests.map((request) => (
@@ -590,17 +667,17 @@ const Dashboard = () => {
                               <Button 
                                 size="sm" 
                                 variant="destructive"
-                                onClick={() => handleJoinRequest(request.id, 'rejected')}
+                                onClick={() => handleJoinRequest(request.id, 'denied')}
                               >
-                                Decline
+                                Deny
                               </Button>
                             </>
                           )}
                           {request.status === 'approved' && (
                             <Badge variant="default">Approved</Badge>
                           )}
-                          {request.status === 'rejected' && (
-                            <Badge variant="destructive">Rejected</Badge>
+                          {request.status === 'denied' && (
+                            <Badge variant="destructive">Denied</Badge>
                           )}
                         </div>
                       </div>

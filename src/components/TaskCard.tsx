@@ -12,14 +12,16 @@ interface Task {
   description: string;
   status: "todo" | "in_progress" | "done";
   allotment: string;
+  hours?: number;
 }
 
 interface TaskCardProps {
   task: Task;
+  userId: string;
   onTaskUpdated?: () => void;
 }
 
-const TaskCard = ({ task, onTaskUpdated }: TaskCardProps) => {
+const TaskCard = ({ task, userId, onTaskUpdated }: TaskCardProps) => {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -33,6 +35,29 @@ const TaskCard = ({ task, onTaskUpdated }: TaskCardProps) => {
 
       if (error) {
         throw error;
+      }
+
+      // If marking as done, create a daily log entry using task hours
+      if (newStatus === 'done') {
+        const hoursToLog = typeof task.hours === 'number' ? task.hours : 0;
+        if (hoursToLog > 0) {
+          const { error: logError } = await supabase
+            .from('daily_logs')
+            .insert({
+              user_id: userId,
+              task_id: task.id,
+              tasks_completed: task.title,
+              hours_spent: hoursToLog,
+            });
+          if (logError) {
+            // Don't fail the whole operation if logging fails; just inform
+            toast({
+              title: "Task updated, but failed to log hours",
+              description: logError.message || "Hours were not recorded in daily logs.",
+              variant: "destructive",
+            });
+          }
+        }
       }
 
       toast({
@@ -122,6 +147,11 @@ const TaskCard = ({ task, onTaskUpdated }: TaskCardProps) => {
           </Badge>
           
           <div className="flex gap-2">
+            {typeof task.hours === 'number' && task.hours > 0 && (
+              <Badge variant="outline" className="text-xs">
+                Target: {task.hours.toFixed(2)}h
+              </Badge>
+            )}
             {task.status !== "done" && (
               <Button 
                 size="sm" 

@@ -105,6 +105,30 @@ const AdminDashboard = () => {
     }
   }, [authUser]);
 
+  // Realtime: reflect invites and acceptances instantly
+  useEffect(() => {
+    if (!organization?.id) return;
+    const channel = supabase
+      .channel(`realtime-admin-${organization.id}`)
+      // Join requests for this org (new invites, status changes)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'join_requests', filter: `organization_id=eq.${organization.id}` },
+        () => fetchAdminData()
+      )
+      // Profiles updates where user joins/leaves this org
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles', filter: `organization_id=eq.${organization.id}` },
+        () => fetchAdminData()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [organization?.id]);
+
   const fetchAdminData = async () => {
     if (!authUser) return;
 
@@ -568,6 +592,7 @@ const AdminDashboard = () => {
                                 title: "Invitation sent",
                                 description: "The user has been invited to join your organization.",
                               });
+                              fetchAdminData();
                             }}
                           />
                         </DialogContent>
@@ -642,6 +667,70 @@ const AdminDashboard = () => {
                                     userId={user.id}
                                     organizationId={organization?.id}
                                   />
+                                </DialogContent>
+                              </Dialog>
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    disabled={user.id === authUser?.id}
+                                    title={user.id === authUser?.id ? 'You cannot remove yourself' : undefined}
+                                  >
+                                    Remove from Org
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Remove User from Organization</DialogTitle>
+                                    <DialogDescription>
+                                      This will detach the user from your organization and clear their department. They will immediately lose access to org resources.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="space-y-3 text-sm">
+                                    <p>
+                                      User: <strong>{user.full_name || user.email}</strong>
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                      Warning: This action does not delete the account, but will remove their organization and department associations.
+                                    </p>
+                                  </div>
+                                  <div className="flex justify-end gap-2 mt-4">
+                                    <Button variant="outline">Cancel</Button>
+                                    <Button
+                                      variant="destructive"
+                                      onClick={async () => {
+                                        if (user.id === authUser?.id) {
+                                          toast({
+                                            title: 'Action not allowed',
+                                            description: 'You cannot remove yourself from the organization.',
+                                            variant: 'destructive',
+                                          });
+                                          return;
+                                        }
+                                        try {
+                                          const { error } = await supabase
+                                            .from('profiles')
+                                            .update({ organization_id: null, department_id: null })
+                                            .eq('id', user.id);
+                                          if (error) throw error;
+                                          toast({
+                                            title: 'User removed from organization',
+                                            description: `${user.full_name || user.email} no longer belongs to this organization.`,
+                                          });
+                                          await fetchAdminData();
+                                        } catch (e: any) {
+                                          toast({
+                                            title: 'Failed to remove user',
+                                            description: e.message || 'Please try again.',
+                                            variant: 'destructive',
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      Confirm Remove
+                                    </Button>
+                                  </div>
                                 </DialogContent>
                               </Dialog>
                             </div>
