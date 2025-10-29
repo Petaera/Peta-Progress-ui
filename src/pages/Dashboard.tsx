@@ -440,30 +440,35 @@ const Dashboard = () => {
       <header className="border-b bg-card shadow-soft">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="h-10 w-10 rounded-xl gradient-primary flex items-center justify-center">
-                <span className="text-xl font-bold text-white">P</span>
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-semibold">
+                P
               </div>
-              <div>
-                <h1 className="text-xl font-bold">PetaProgress</h1>
-                <p className="text-sm text-muted-foreground">
-                  {user.organizations?.name || user.departments?.name || 'No Organization'}
-                </p>
+              <div className="leading-tight">
+                <div className="font-semibold">PetaProgress</div>
+                <div className="text-xs text-muted-foreground">
+                  {user.organizations?.name || 'No Organization'}{user.departments?.name ? ` • ${user.departments?.name}` : ''}
+                </div>
               </div>
             </div>
-            
-            <div className="flex items-center gap-4">
+
+            <div className="flex items-center gap-3">
               <AvailabilityToggle 
                 isAvailable={isAvailable} 
                 onToggle={handleAvailabilityToggle} 
               />
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-primary text-primary-foreground">
-                  {user.full_name?.split(' ').map(n => n[0]).join('') || 'U'}
+              <div className="hidden sm:flex flex-col items-end leading-tight mr-1">
+                <span className="text-sm font-medium truncate max-w-[140px]">{user.full_name || user.email}</span>
+                <span className="text-xs text-muted-foreground">{user.role === 'admin' ? 'Administrator' : 'Team Member'}</span>
+              </div>
+              <Avatar className="h-9 w-9">
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {user.full_name?.split(' ')[0]?.[0] || 'U'}
                 </AvatarFallback>
               </Avatar>
-              <Button variant="ghost" size="icon" onClick={handleSignOut}>
-                <LogOut className="h-5 w-5" />
+              <Button variant="outline" size="sm" onClick={handleSignOut} aria-label="Sign out" title="Sign out">
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign out
               </Button>
             </div>
           </div>
