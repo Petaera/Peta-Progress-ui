@@ -13,6 +13,7 @@ import AdminDashboard from "./pages/Dashboardadmin";
 import NotFound from "./pages/NotFound";
 import DatabaseTest from "./components/DatabaseTest";
 import ProfileDebugger from "./components/ProfileDebugger";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +75,7 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/test-supabase" element={<TodosTest />} />
             <Route path="/test-db" element={<DatabaseTest />} />
             <Route path="/debug-profile" element={<ProfileDebugger />} />

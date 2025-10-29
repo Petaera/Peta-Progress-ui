@@ -76,6 +76,12 @@ const PerformanceReport = ({ userId, organizationId }: PerformanceReportProps) =
         .select('allocated_hours, logged_hours, month')
         .eq('user_id', userId)
         .eq('month', now.toISOString().slice(0, 7)); // Current month
+      // Fetch user's profile to get working_hours as fallback target
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('working_hours')
+        .eq('id', userId)
+        .maybeSingle();
 
       if (hoursError) {
         console.warn('Monthly hours not found:', hoursError);
@@ -111,12 +117,25 @@ const PerformanceReport = ({ userId, organizationId }: PerformanceReportProps) =
       // Calculate completion rate
       const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
+      const fallbackTarget = Number(profile?.working_hours) || 40;
       // Calculate productivity score (combination of completion rate and hours logged)
-      const productivityScore = Math.min(100, (completionRate * 0.6) + (Math.min(totalHoursLogged / 40, 1) * 40));
+      const productivityScore = Math.min(100, (completionRate * 0.6) + (Math.min(totalHoursLogged / fallbackTarget, 1) * 40));
 
       // Monthly hours data
-      const currentMonthHours = monthlyHours?.[0]?.logged_hours || 0;
-      const targetMonthHours = monthlyHours?.[0]?.allocated_hours || 40;
+      // Prefer monthly_hours.logged_hours when available, otherwise compute from this month's daily_logs
+      const monthStart = startOfMonth;
+      const nextMonthStart = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+      const currentMonthLogs = (logs || []).filter(l => {
+        const d = new Date(l.log_date);
+        return d >= monthStart && d < nextMonthStart;
+      });
+      const computedMonthHours = currentMonthLogs.reduce((sum, l) => sum + Number(l.hours_spent), 0);
+      const currentMonthHours = (monthlyHours && monthlyHours[0] && typeof monthlyHours[0].logged_hours === 'number')
+        ? monthlyHours[0].logged_hours
+        : computedMonthHours;
+      const targetMonthHours = (monthlyHours && monthlyHours[0] && typeof monthlyHours[0].allocated_hours === 'number')
+        ? monthlyHours[0].allocated_hours
+        : fallbackTarget;
       const monthlyPercentage = targetMonthHours > 0 ? (currentMonthHours / targetMonthHours) * 100 : 0;
 
       setMetrics({

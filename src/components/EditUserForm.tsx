@@ -14,6 +14,7 @@ interface EditUserFormProps {
     role: string;
     organization_id?: string;
     department_id?: string;
+    working_hours?: number;
   };
   departments: Array<{ id: string; name: string }>;
   onUserUpdated: () => void;
@@ -22,18 +23,26 @@ interface EditUserFormProps {
 
 const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFormProps) => {
   const [departmentId, setDepartmentId] = useState(user.department_id || "none");
+  const [workingHours, setWorkingHours] = useState<string>(
+    typeof user.working_hours === 'number' ? String(user.working_hours) : ''
+  );
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const updateUser = async () => {
     setLoading(true);
     try {
-      console.log('Updating user department:', { id: user.id, departmentId });
+      console.log('Updating user:', { id: user.id, departmentId, workingHours });
+      const hoursNumber = workingHours === '' ? null : Number(workingHours);
+      if (hoursNumber !== null && (isNaN(hoursNumber) || hoursNumber < 0)) {
+        throw new Error('Working hours must be a non-negative number');
+      }
       
       const { data, error } = await supabase
         .from('profiles')
         .update({
-          department_id: departmentId === "none" ? null : departmentId || null
+          department_id: departmentId === "none" ? null : departmentId || null,
+          ...(hoursNumber === null ? {} : { working_hours: hoursNumber })
         })
         .eq('id', user.id)
         .select()
@@ -47,8 +56,8 @@ const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFor
       console.log('User department updated:', data);
 
       toast({
-        title: "Department updated",
-        description: `Department assignment for "${user.full_name}" has been updated successfully.`,
+        title: "Profile updated",
+        description: `Settings for "${user.full_name}" have been updated successfully.`,
       });
 
       onUserUpdated();
@@ -120,18 +129,32 @@ const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFor
         </Select>
       </div>
 
+      <div className="space-y-2">
+        <Label htmlFor="working-hours">Monthly Target Hours</Label>
+        <Input
+          id="working-hours"
+          type="number"
+          min="0"
+          step="0.5"
+          placeholder="e.g., 160"
+          value={workingHours}
+          onChange={(e) => setWorkingHours(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">Target working hours per month for this staff member.</p>
+      </div>
+
       <Button 
         onClick={updateUser} 
         disabled={loading}
         className="w-full"
       >
-        {loading ? "Updating Department..." : "Update Department"}
+        {loading ? "Updating..." : "Save Changes"}
       </Button>
 
       <div className="text-xs text-muted-foreground">
-        <p>• Only department assignment can be changed</p>
+        <p>• You can change department and monthly target hours</p>
         <p>• Name and role are managed by the user or system administrator</p>
-        <p>• Department assignment affects task visibility and organization structure</p>
+        <p>• Target hours help evaluate performance vs expected effort</p>
       </div>
     </div>
   );

@@ -145,17 +145,22 @@ const Dashboard = () => {
             )
           `)
           .eq('user_id', authUser.id)
+          .neq('status', 'done')
           .limit(10)
           .order('created_at', { ascending: false })
       );
 
-      // Fetch daily logs
+      // Fetch daily logs for current month (to align with Performance section)
+      const now = new Date();
+      const monthStartStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+      const nextMonthStartStr = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0,10);
       promises.push(
         supabase
           .from('daily_logs')
-          .select('hours_spent')
+          .select('hours_spent, log_date')
           .eq('user_id', authUser.id)
-          .limit(50)
+          .gte('log_date', monthStartStr)
+          .lt('log_date', nextMonthStartStr)
       );
 
       // Fetch join requests for this user
@@ -195,7 +200,7 @@ const Dashboard = () => {
         totalTasks: userTasks.length,
         completedTasks,
         hoursLogged: totalHours,
-        hoursTarget: 40,
+        hoursTarget: Number(profile.working_hours) || 40,
         teamAvailable,
         teamTotal,
       });
@@ -212,7 +217,7 @@ const Dashboard = () => {
       // First, fetch user profile only
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, email, full_name, role, availability_status, organization_id, department_id')
+        .select('id, email, full_name, role, availability_status, organization_id, department_id, working_hours')
         .eq('id', authUser.id)
         .maybeSingle(); // Use maybeSingle to handle no rows gracefully
 
@@ -545,7 +550,7 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 {tasks.length > 0 ? (
-                  tasks.map((task) => (
+                  tasks.filter(t => t.status !== 'done').map((task) => (
                     <TaskCard 
                       key={task.id} 
                       task={{
@@ -595,12 +600,13 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 <DailyLogForm 
-                  tasks={tasks.map(task => ({
+                  tasks={tasks.filter(t => t.status !== 'done').map(task => ({
                     id: task.id,
                     title: task.title,
                     description: task.description,
                     status: task.status,
-                    allotment: task.work_allotments?.title || 'No Allotment'
+                    allotment: task.work_allotments?.title || 'No Allotment',
+                    hours: typeof task.hours === 'number' ? task.hours : Number(task.hours) || undefined,
                   }))} 
                 />
               </CardContent>

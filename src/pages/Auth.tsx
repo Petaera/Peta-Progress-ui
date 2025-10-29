@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,7 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const signInEmailRef = useRef<HTMLInputElement>(null);
 
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -91,6 +92,37 @@ const Auth = () => {
     }
   };
 
+  const handleResetPassword = async () => {
+    const email = signInEmailRef.current?.value?.trim();
+    if (!email) {
+      toast({
+        title: "Enter your email",
+        description: "Please enter your email in the sign-in form to reset your password.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      toast({
+        title: "Password reset email sent",
+        description: "Check your inbox for the reset link.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to send reset email",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 gradient-subtle">
       <Card className="w-full max-w-md shadow-lg">
@@ -120,6 +152,7 @@ const Auth = () => {
                     type="email" 
                     placeholder="you@example.com" 
                     required 
+                    ref={signInEmailRef}
                   />
                 </div>
                 <div className="space-y-2">
@@ -131,6 +164,11 @@ const Auth = () => {
                     placeholder="••••••••" 
                     required 
                   />
+                </div>
+                <div className="flex justify-end -mt-2">
+                  <Button type="button" variant="link" className="px-0 text-sm" onClick={handleResetPassword} disabled={isLoading}>
+                    Forgot password?
+                  </Button>
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Signing in..." : "Sign In"}

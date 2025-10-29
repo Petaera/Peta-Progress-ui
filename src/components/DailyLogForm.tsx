@@ -17,6 +17,7 @@ interface Task {
   description?: string;
   status: string;
   allotment?: string;
+  hours?: number;
 }
 
 interface WorkAllotment {
@@ -193,7 +194,13 @@ const DailyLogForm = ({ tasks }: DailyLogFormProps) => {
                     <Label htmlFor="task">Task</Label>
                     <Select 
                       value={formData.taskId}
-                      onValueChange={(value) => setFormData({ ...formData, taskId: value })}
+                      onValueChange={(value) => {
+                        const selected = tasks.find(t => t.id === value);
+                        const autoHours = selected && typeof selected.hours === 'number' && selected.hours > 0
+                          ? String(selected.hours)
+                          : formData.hours;
+                        setFormData({ ...formData, taskId: value, hours: autoHours || '' });
+                      }}
                       required
                     >
                       <SelectTrigger id="task">
