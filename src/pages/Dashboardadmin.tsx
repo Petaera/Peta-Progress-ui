@@ -94,7 +94,16 @@ const AdminDashboard = () => {
   const [workAllotments, setWorkAllotments] = useState<WorkAllotment[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [showUserDetail, setShowUserDetail] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [userDetail, setUserDetail] = useState<any>(null);
+  const [userDetailLoading, setUserDetailLoading] = useState(false);
   
+  // state for attendance expand/collapse in admin detail modal
+  const [showAllSess, setShowAllSess] = useState(false);
+  const [allSessLoading, setAllSessLoading] = useState(false);
+  const [allSessions, setAllSessions] = useState<any[] | null>(null);
+
   const { user: authUser, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -208,6 +217,43 @@ const AdminDashboard = () => {
     }
   };
 
+  async function fetchUserDetail(user) {
+    setSelectedUser(user);
+    setShowUserDetail(true);
+    setUserDetailLoading(true);
+    try {
+      const [tasksRes, logsRes, sessionsRes] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('title, description, status, work_allotments(title)')
+          .eq('user_id', user.id),
+        supabase
+          .from('daily_logs')
+          .select('log_date, tasks_completed, hours_spent, tasks(title)')
+          .eq('user_id', user.id)
+          .order('log_date', { ascending: false })
+          .limit(5),
+        supabase
+          .from('user_sessions')
+          .select('login_time, logout_time, duration_seconds')
+          .eq('user_id', user.id)
+          .order('login_time', { ascending: false })
+          .limit(5),
+      ]);
+      setUserDetail({
+        profile: user,
+        tasks: tasksRes.data || [],
+        logs: logsRes.data || [],
+        sessions: sessionsRes.data || [],
+      });
+    } catch (err) {
+      toast({ title: 'Failed to load detail', description: err.message, variant: 'destructive' });
+      setUserDetail(null);
+    } finally {
+      setUserDetailLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -227,6 +273,151 @@ const AdminDashboard = () => {
           <Button onClick={() => navigate('/dashboard')}>Go to Dashboard</Button>
         </div>
       </div>
+    );
+  }
+
+  let userDetailContent;
+  if (userDetailLoading) {
+    userDetailContent = (
+      <div className="text-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>Loading...</div>
+    );
+  } else if (userDetail) {
+    userDetailContent = (
+      <div className="space-y-4">
+        {/* Profile quick info */}
+        <div className="border-b pb-2">
+          <div className="font-bold text-lg">{userDetail.profile.full_name || userDetail.profile.email}</div>
+          <div className="text-xs mb-1">
+            <span>Status: <span className={`inline-block rounded px-2 py-0.5 ${userDetail.profile.availability_status === 'available' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}`}>{userDetail.profile.availability_status}</span></span>
+            {' | Last Seen: ' + (userDetail.profile.last_seen ? new Date(userDetail.profile.last_seen).toLocaleString() : '--')}
+            {' | Department: ' + (departments.find(d => d.id === userDetail.profile.department_id)?.name || '--')}
+          </div>
+        </div>
+        {/* Assigned Tasks */}
+        <div>
+          <h4 className="font-semibold mb-2">Assigned Tasks</h4>
+          <ul className="text-sm space-y-1">
+            {userDetail.tasks.length > 0 ? userDetail.tasks.map((task, i) => (
+              <li key={task.title + i}>
+                <span className="capitalize">({task.status})</span> <span className="font-medium">{task.title}</span>
+                {task.work_allotments?.title && <span className="ml-1 italic">[{task.work_allotments.title}]</span>}
+              </li>
+            )) : <li className="text-muted-foreground italic">No tasks assigned.</li>}
+          </ul>
+        </div>
+        {/* Recent Logs */}
+        <div>
+          <h4 className="font-semibold mb-2">Recent Work Logs</h4>
+          <ul className="text-sm space-y-1">
+            {userDetail.logs.length > 0 ? userDetail.logs.map((log, i) => (
+              <li key={log.log_date + '-' + i}>
+                <strong>{log.log_date}:</strong> {log.tasks_completed} ({log.hours_spent} hrs)
+                {log.tasks?.title && <span className="ml-1 italic">on {log.tasks.title}</span>}
+              </li>
+            )) : <li className="text-muted-foreground italic">No recent logs found.</li>}
+          </ul>
+        </div>
+        {/* Attendance */}
+        <div>
+          <h4 className="font-semibold mb-2">Recent Attendance</h4>
+          <ul className="text-sm space-y-1">
+            {userDetail.sessions.length > 0 ? userDetail.sessions.slice(0,5).map((session, i) => (
+              <li key={session.login_time + '-' + i} className="flex flex-col md:flex-row md:items-center md:gap-2">
+                <span className="font-semibold mr-2">
+                  {session.login_time ? new Date(session.login_time).toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' }) : '--'}
+                </span>
+                <span className="">
+                  {session.login_time ? new Date(session.login_time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '--'}
+                  <span> – </span>
+                  {session.logout_time 
+                    ? new Date(session.logout_time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                    : <span className="italic text-muted-foreground">Ongoing</span>
+                  }
+                  <span className="ml-2">
+                    (
+                    {session.duration_seconds !== undefined && session.logout_time
+                      ? `${Math.floor(session.duration_seconds/3600)}h ${Math.round((session.duration_seconds%3600)/60)}m`
+                      : <span className="italic text-muted-foreground">In progress</span>
+                    }
+                    )
+                  </span>
+                </span>
+              </li>
+            )) : <li className="text-muted-foreground italic">No recent attendance found.</li>}
+          </ul>
+          {/* Show more link if more than 5 or always show for better discoverability */}
+          {userDetail.sessions.length >= 5 && (
+            <div className="mt-2">
+              <button
+                className="text-xs underline text-primary hover:text-primary-dark focus:outline-none" 
+                type="button" 
+                onClick={async () => {
+                  if (showAllSess) { setShowAllSess(false); return; }
+                  setAllSessLoading(true); setShowAllSess(true);
+                  // Fetch all sessions for the month for this user
+                  try {
+                    const now = new Date();
+                    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                    const { data, error } = await supabase
+                      .from('user_sessions')
+                      .select('*')
+                      .eq('user_id', userDetail.profile.id)
+                      .gte('login_time', monthStart.toISOString())
+                      .order('login_time', { ascending: false });
+                    if (error) throw error;
+                    setAllSessions(data || []);
+                  } catch(e) {
+                    toast({ title: 'Error loading sessions', description: e.message, variant: 'destructive' });
+                    setAllSessions([]);
+                  } finally {
+                    setAllSessLoading(false);
+                  }
+                }}
+              >
+                {showAllSess ? 'Hide All This Month' : 'Show All This Month'}
+              </button>
+            </div>
+          )}
+          {showAllSess && (
+            <div className="mt-2 pb-1 max-h-48 overflow-y-auto border-t">
+              {allSessLoading
+                ? (<div className="text-xs py-2 text-center">Loading all sessions...</div>)
+                : (allSessions?.length > 0
+                    ? <ul className="text-sm space-y-1">
+                        {allSessions.map((session, i) => (
+                          <li key={session.login_time + '-' + i} className="flex flex-col md:flex-row md:items-center md:gap-2">
+                            <span className="font-semibold mr-2">
+                              {session.login_time ? new Date(session.login_time).toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' }) : '--'}
+                            </span>
+                            <span>
+                              {session.login_time ? new Date(session.login_time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '--'}
+                              <span> – </span>
+                              {session.logout_time 
+                                ? new Date(session.logout_time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                                : <span className="italic text-muted-foreground">Ongoing</span>
+                              }
+                              <span className="ml-2">
+                                (
+                                {session.duration_seconds !== undefined && session.logout_time
+                                  ? `${Math.floor(session.duration_seconds/3600)}h ${Math.round((session.duration_seconds%3600)/60)}m`
+                                  : <span className="italic text-muted-foreground">In progress</span>
+                                }
+                                )
+                              </span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    : <div className="text-xs italic text-muted-foreground py-2">No attendance found for this month.</div>)
+              }
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  } else {
+    userDetailContent = (
+      <div className="text-muted-foreground">Failed to load user detail.</div>
     );
   }
 
@@ -641,9 +832,7 @@ const AdminDashboard = () => {
                                 <DialogContent>
                                   <DialogHeader>
                                     <DialogTitle>Edit User Department</DialogTitle>
-                                    <DialogDescription>
-                                      Update user's department assignment
-                                    </DialogDescription>
+                                    <DialogDescription>Update user's department assignment</DialogDescription>
                                   </DialogHeader>
                                   <EditUserForm 
                                     user={user}
@@ -652,6 +841,7 @@ const AdminDashboard = () => {
                                   />
                                 </DialogContent>
                               </Dialog>
+                              <Button size="sm" variant="secondary" onClick={() => fetchUserDetail(user)}>View Details</Button>
                               <Dialog>
                                 <DialogTrigger asChild>
                                   <Button size="sm" variant="secondary">
@@ -960,6 +1150,14 @@ const AdminDashboard = () => {
           </Tabs>
         </main>
       </div>
+      <Dialog open={showUserDetail} onOpenChange={setShowUserDetail}>
+        <DialogContent className="max-w-2xl w-full">
+          <DialogHeader>
+            <DialogTitle>User Detail</DialogTitle>
+          </DialogHeader>
+          {userDetailContent}
+        </DialogContent>
+      </Dialog>
     </ErrorBoundary>
   );
 };

@@ -49,6 +49,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showJoinRequestsDialog, setShowJoinRequestsDialog] = useState(false);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<any[]>([]);
+  const [availableTeamNames, setAvailableTeamNames] = useState<string[]>([]);
   
   const { user: authUser, signOut } = useAuth();
   const { toast } = useToast();
@@ -412,6 +414,43 @@ const Dashboard = () => {
     }
   };
 
+  useEffect(() => {
+    const fetchCompletedTasks = async () => {
+      if (!authUser) return;
+      const { data, error } = await supabase
+        .from('tasks')
+        .select(
+          `id, title, description, status, created_at, work_allotments(title)`
+        )
+        .eq('user_id', authUser.id)
+        .eq('status', 'done')
+        .order('created_at', { ascending: false });
+      if (!error && Array.isArray(data)) setCompletedTasks(data);
+      // Optionally handle error
+    };
+    fetchCompletedTasks();
+  }, [authUser, stats.totalTasks]); // refresh when login or major task count changes
+
+  useEffect(() => {
+    async function fetchAvailableTeamNames() {
+      if (!user?.department_id || !authUser?.id) {
+        setAvailableTeamNames([]); return;
+      }
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('department_id', user.department_id)
+        .eq('availability_status', 'available')
+        .neq('id', authUser.id);
+      if (!error && Array.isArray(data)) {
+        setAvailableTeamNames(data.filter(u => u.full_name).map(u => u.full_name));
+      } else {
+        setAvailableTeamNames([]);
+      }
+    }
+    fetchAvailableTeamNames();
+  }, [user?.department_id, authUser?.id, stats.teamAvailable]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -575,6 +614,26 @@ const Dashboard = () => {
 
           <Card className="shadow-soft">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Active Team Members</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {availableTeamNames.length > 0 ? (
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {availableTeamNames.map(name => (
+                    <li key={name} className="bg-green-50 text-green-800 rounded px-2 py-0.5 text-xs">
+                      {name}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-xs text-muted-foreground">No other available members in your department.</div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* <Card className="shadow-soft">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Completed</CardTitle>
               <CheckCircle2 className="h-4 w-4 text-success" />
             </CardHeader>
@@ -584,7 +643,7 @@ const Dashboard = () => {
                 {Math.round((stats.completedTasks / stats.totalTasks) * 100)}% completion rate
               </p>
             </CardContent>
-          </Card>
+          </Card> */}
 
           <Card className="shadow-soft">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -608,17 +667,28 @@ const Dashboard = () => {
             <CardContent>
               <div className="text-2xl font-bold">{stats.teamAvailable}/{stats.teamTotal}</div>
               <p className="text-xs text-muted-foreground mt-1">Members available</p>
-              {Array.isArray(teamMembers) && teamMembers.filter(m => m.availability_status === 'available' && m.id !== authUser?.id).length > 0 && (
-                <ul className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-2">
-                  {teamMembers
-                    .filter(m => m.availability_status === 'available' && m.id !== authUser?.id)
-                    .map(m => (
-                      <li key={m.id} className="bg-green-50 text-green-800 rounded px-2 py-0.5">
-                        {m.full_name || m.email || m.id}
-                      </li>
-                    ))}
-                </ul>
-              )}
+              {Array.isArray(teamMembers)
+                && teamMembers.filter(m =>
+                    m.availability_status === 'available'
+                    && m.id !== authUser?.id
+                    && m.full_name
+                    && (!user?.department_id || !m.department_id || m.department_id === user.department_id)
+                  ).length > 0 && (
+                  <ul className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-2">
+                    {teamMembers
+                      .filter(m =>
+                        m.availability_status === 'available'
+                        && m.id !== authUser?.id
+                        && m.full_name
+                        && (!user?.department_id || !m.department_id || m.department_id === user.department_id)
+                      )
+                      .map(m => (
+                        <li key={m.id} className="bg-green-50 text-green-800 rounded px-2 py-0.5">
+                          {m.full_name}
+                        </li>
+                      ))}
+                  </ul>
+                )}
             </CardContent>
           </Card>
         </div>
