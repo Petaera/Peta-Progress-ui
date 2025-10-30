@@ -15,6 +15,23 @@ import AvailabilityToggle from "@/components/AvailabilityToggle";
 import DailyLogForm from "@/components/DailyLogForm";
 import PerformanceReport from "@/components/PerformanceReport";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItem
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 
 const Dashboard = () => {
   const [isAvailable, setIsAvailable] = useState(false);
@@ -30,6 +47,8 @@ const Dashboard = () => {
     teamTotal: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [showJoinRequestsDialog, setShowJoinRequestsDialog] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
   
   const { user: authUser, signOut } = useAuth();
   const { toast } = useToast();
@@ -157,7 +176,7 @@ const Dashboard = () => {
       promises.push(
         supabase
           .from('daily_logs')
-          .select('hours_spent, log_date')
+          .select('hours_spent, log_date, tasks_completed, id')
           .eq('user_id', authUser.id)
           .gte('log_date', monthStartStr)
           .lt('log_date', nextMonthStartStr)
@@ -185,24 +204,23 @@ const Dashboard = () => {
       // Set tasks and logs
       const userTasks = tasksResult.data || [];
       const logs = logsResult.data || [];
+      setTasks(userTasks);
       const requests = requestsResult.data || [];
       const teamMembers = (teamResult?.data as Array<{ id: string; availability_status: string }>) || [];
-      const teamTotal = teamMembers.length;
-      const teamAvailable = teamMembers.filter(m => m.availability_status === 'available').length;
-      setTasks(userTasks);
+      setTeamMembers(teamMembers);
       setJoinRequests(requests);
 
       // Calculate stats
       const totalHours = logs.reduce((sum, log) => sum + Number(log.hours_spent), 0);
-      const completedTasks = userTasks.filter(task => task.status === 'done').length;
+      const completedTasksCount = userTasks.filter(task => task.status === 'done').length;
       
       setStats({
         totalTasks: userTasks.length,
-        completedTasks,
+        completedTasks: completedTasksCount,
         hoursLogged: totalHours,
         hoursTarget: Number(profile.working_hours) || 40,
-        teamAvailable,
-        teamTotal,
+        teamAvailable: teamMembers.filter(m => m.availability_status === 'available').length,
+        teamTotal: teamMembers.length,
       });
 
     } catch (error: any) {
@@ -433,26 +451,29 @@ const Dashboard = () => {
     );
   }
 
+  const pendingJoinRequests = joinRequests.filter(r => r.status === 'pending');
+  const pendingCount = pendingJoinRequests.length;
+
   return (
     <ErrorBoundary>
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card shadow-soft">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-3 flex-nowrap min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-semibold">
                 P
               </div>
-              <div className="leading-tight">
-                <div className="font-semibold">PetaProgress</div>
-                <div className="text-xs text-muted-foreground">
+              <div className="leading-tight truncate max-w-[40vw]">
+                <div className="font-semibold truncate">PetaProgress</div>
+                <div className="text-xs text-muted-foreground truncate">
                   {user.organizations?.name || 'No Organization'}{user.departments?.name ? ` • ${user.departments?.name}` : ''}
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-shrink-0 flex-nowrap">
               <AvailabilityToggle 
                 isAvailable={isAvailable} 
                 onToggle={handleAvailabilityToggle} 
@@ -461,15 +482,68 @@ const Dashboard = () => {
                 <span className="text-sm font-medium truncate max-w-[140px]">{user.full_name || user.email}</span>
                 <span className="text-xs text-muted-foreground">{user.role === 'admin' ? 'Administrator' : 'Team Member'}</span>
               </div>
-              <Avatar className="h-9 w-9">
-                <AvatarFallback className="bg-primary/10 text-primary">
-                  {user.full_name?.split(' ')[0]?.[0] || 'U'}
-                </AvatarFallback>
-              </Avatar>
-              <Button variant="outline" size="sm" onClick={handleSignOut} aria-label="Sign out" title="Sign out">
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign out
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <div>
+                    <Avatar className="h-9 w-9 cursor-pointer">
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        {user.full_name?.split(' ')[0]?.[0] || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Profile</DropdownMenuLabel>
+                  <DropdownMenuItem disabled>
+                    {user.full_name || user.email}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={e => {
+                      e.preventDefault();
+                      setShowJoinRequestsDialog(true);
+                    }}
+                  >
+                    Join Requests
+                    {pendingCount > 0 && (
+                      <span className="ml-auto inline-block px-2 py-0.5 rounded-full text-xs bg-primary text-white">{pendingCount}</span>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      // Find org admin
+                      try {
+                        if (!user?.organization_id) throw new Error('No organization');
+                        const { data: admins, error } = await supabase
+                          .from('profiles')
+                          .select('email, full_name')
+                          .eq('organization_id', user.organization_id)
+                          .eq('role', 'admin');
+                        if (error) throw error;
+                        const adminEmail = admins && admins.length > 0 ? admins[0].email : '';
+                        if (!adminEmail) throw new Error('Admin not found');
+                        const body = encodeURIComponent(`Hello Admin,%0D%0A%0D%0AI would like to leave the organization. Please remove my access from the system.%0D%0A%0D%0AUser: ${user.full_name || user.email}%0D%0AEmail: ${user.email}%0D%0AUser ID: ${user.id}%0D%0A%0D%0AThank you.`);
+                        const subject = encodeURIComponent('Request to leave organization');
+                        window.location.href = `mailto:${encodeURIComponent(adminEmail)}?subject=${subject}&body=${body}`;
+                      } catch (err) {
+                        toast({ title: 'Unable to prepare email', description: 'Please contact your admin to leave the organization.', variant: 'destructive' });
+                      }
+                    }}
+                  >
+                    Leave Organization (Email Admin)
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleSignOut();
+                    }}
+                  >
+                    <LogOut className="h-4 w-4 mr-2" /> Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -487,7 +561,7 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Card className="shadow-soft">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
@@ -534,179 +608,157 @@ const Dashboard = () => {
             <CardContent>
               <div className="text-2xl font-bold">{stats.teamAvailable}/{stats.teamTotal}</div>
               <p className="text-xs text-muted-foreground mt-1">Members available</p>
+              {Array.isArray(teamMembers) && teamMembers.filter(m => m.availability_status === 'available' && m.id !== authUser?.id).length > 0 && (
+                <ul className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-2">
+                  {teamMembers
+                    .filter(m => m.availability_status === 'available' && m.id !== authUser?.id)
+                    .map(m => (
+                      <li key={m.id} className="bg-green-50 text-green-800 rounded px-2 py-0.5">
+                        {m.full_name || m.email || m.id}
+                      </li>
+                    ))}
+                </ul>
+              )}
             </CardContent>
           </Card>
         </div>
 
         {/* Tabs Section */}
-        <Tabs defaultValue="tasks" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="tasks">My Tasks</TabsTrigger>
-            <TabsTrigger value="performance">Performance</TabsTrigger>
-            <TabsTrigger value="log">Daily Log</TabsTrigger>
-            <TabsTrigger value="requests">Join Requests</TabsTrigger>
-          </TabsList>
+        <div className="overflow-x-auto w-full">
+          <Tabs defaultValue="tasks" className="space-y-4 min-w-0">
+            <TabsList className="w-full flex flex-wrap">
+              <TabsTrigger value="tasks">My Tasks</TabsTrigger>
+              <TabsTrigger value="performance">Performance</TabsTrigger>
+              <TabsTrigger value="log">Daily Log</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="tasks" className="space-y-4">
-            <Card className="shadow-soft">
-              <CardHeader>
-                <CardTitle>Active Tasks</CardTitle>
-                <CardDescription>Tasks assigned to you</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {tasks.length > 0 ? (
-                  tasks.filter(t => t.status !== 'done').map((task) => (
-                    <TaskCard 
-                      key={task.id} 
-                      task={{
-                        id: task.id,
-                        title: task.title,
-                        description: task.description || '',
-                        status: task.status,
-                        allotment: task.work_allotments?.title || 'No Allotment',
-                        hours: typeof task.hours === 'number' ? task.hours : Number(task.hours) || 0,
-                      }}
-                      userId={authUser?.id || ''}
-                      onTaskUpdated={fetchUserData}
-                    />
-                  ))
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground mb-2">No tasks assigned yet.</p>
-                    <p className="text-sm text-muted-foreground">
-                      Tasks will appear here once your admin assigns them to you.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="performance" className="space-y-4">
-            <Card className="shadow-soft">
-              <CardHeader>
-                <CardTitle>Performance Evaluation</CardTitle>
-                <CardDescription>Track your productivity and performance metrics</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <PerformanceReport 
-                  userId={authUser?.id || ''}
-                  organizationId={user?.organization_id}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="log">
-            <Card className="shadow-soft">
-              <CardHeader>
-                <CardTitle>Submit Daily Log</CardTitle>
-                <CardDescription>Record your work hours and progress</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <DailyLogForm 
-                  tasks={tasks.filter(t => t.status !== 'done').map(task => ({
-                    id: task.id,
-                    title: task.title,
-                    description: task.description,
-                    status: task.status,
-                    allotment: task.work_allotments?.title || 'No Allotment',
-                    hours: typeof task.hours === 'number' ? task.hours : Number(task.hours) || undefined,
-                  }))} 
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="requests">
+            <TabsContent value="tasks" className="space-y-4">
               <Card className="shadow-soft">
                 <CardHeader>
-                <CardTitle>Join Requests</CardTitle>
-                <CardDescription>Manage your organization join requests</CardDescription>
+                  <CardTitle>Active Tasks</CardTitle>
+                  <CardDescription>Tasks assigned to you</CardDescription>
                 </CardHeader>
-                <CardContent>
-                {user?.organization_id && (
-                  <div className="mb-4 flex justify-end">
-                    <Button
-                      variant="outline"
-                      onClick={async () => {
-                        try {
-                          // Find organization admin email(s)
-                          const { data: admins, error: adminErr } = await supabase
-                            .from('profiles')
-                            .select('email')
-                            .eq('organization_id', user.organization_id)
-                            .eq('role', 'admin');
-                          if (adminErr) throw adminErr;
-
-                          const adminEmail = admins && admins.length > 0 ? admins[0].email : '';
-                          const mailto = `mailto:${encodeURIComponent(adminEmail || '')}?subject=${encodeURIComponent('Request to leave organization')}&body=${encodeURIComponent(`Hello Admin,%0D%0A%0D%0AI would like to leave the organization. Please remove my access from the system.%0D%0A%0D%0AUser: ${user.full_name || user.email}%0D%0AEmail: ${user.email}%0D%0AUser ID: ${user.id}%0D%0A%0D%0AThank you.`)}`;
-                          window.location.href = mailto;
-                        } catch (e) {
-                          toast({
-                            title: 'Unable to prepare email',
-                            description: 'Please contact your admin to leave the organization.',
-                            variant: 'destructive',
-                          });
-                        }
-                      }}
-                    >
-                      Leave Organization (Email Admin)
-                    </Button>
-                  </div>
-                )}
-                {joinRequests.length > 0 ? (
-                  <div className="space-y-4">
-                    {joinRequests.map((request) => (
-                      <div key={request.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
-                          <p className="font-medium">Request to join organization</p>
-                          <p className="text-sm text-muted-foreground">
-                            Status: {request.status} • Requested: {new Date(request.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          {request.status === 'pending' && (
-                            <>
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => handleJoinRequest(request.id, 'approved')}
-                              >
-                                Accept
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="destructive"
-                                onClick={() => handleJoinRequest(request.id, 'denied')}
-                              >
-                                Deny
-                              </Button>
-                            </>
-                          )}
-                          {request.status === 'approved' && (
-                            <Badge variant="default">Approved</Badge>
-                          )}
-                          {request.status === 'denied' && (
-                            <Badge variant="destructive">Denied</Badge>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">No join requests found.</p>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      You haven't received any requests to join organizations.
-                    </p>
-                  </div>
-                )}
+                <CardContent className="space-y-4">
+                  {tasks.length > 0 ? (
+                    tasks.filter(t => t.status !== 'done').map((task) => (
+                      <TaskCard 
+                        key={task.id} 
+                        task={{
+                          id: task.id,
+                          title: task.title,
+                          description: task.description || '',
+                          status: task.status,
+                          allotment: task.work_allotments?.title || 'No Allotment',
+                          hours: typeof task.hours === 'number' ? task.hours : Number(task.hours) || 0,
+                        }}
+                        userId={authUser?.id || ''}
+                        onTaskUpdated={fetchUserData}
+                      />
+                    ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground mb-2">No tasks assigned yet.</p>
+                      <p className="text-sm text-muted-foreground">
+                        Tasks will appear here once your admin assigns them to you.
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
-        </Tabs>
+
+            <TabsContent value="performance" className="space-y-4">
+              <Card className="shadow-soft">
+                <CardHeader>
+                  <CardTitle>Performance Evaluation</CardTitle>
+                  <CardDescription>Track your productivity and performance metrics</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <PerformanceReport 
+                    userId={authUser?.id || ''}
+                    organizationId={user?.organization_id}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="log">
+              <Card className="shadow-soft">
+                <CardHeader>
+                  <CardTitle>Submit Daily Log</CardTitle>
+                  <CardDescription>Record your work hours and progress</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DailyLogForm 
+                    tasks={tasks.filter(t => t.status !== 'done').map(task => ({
+                      id: task.id,
+                      title: task.title,
+                      description: task.description,
+                      status: task.status,
+                      allotment: task.work_allotments?.title || 'No Allotment',
+                      hours: typeof task.hours === 'number' ? task.hours : Number(task.hours) || undefined,
+                    }))} 
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
       </main>
+      <Dialog open={showJoinRequestsDialog} onOpenChange={setShowJoinRequestsDialog}>
+        <DialogContent className="max-w-lg w-full">
+          <DialogHeader>
+            <DialogTitle>Join Requests</DialogTitle>
+          </DialogHeader>
+          {joinRequests.length > 0 ? (
+            <div className="space-y-4">
+              {joinRequests.map((request) => (
+                <div key={request.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <p className="font-medium">Request to join organization</p>
+                    <p className="text-sm text-muted-foreground">
+                      Status: {request.status} • Requested: {new Date(request.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {request.status === 'pending' && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleJoinRequest(request.id, 'approved')}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleJoinRequest(request.id, 'denied')}
+                        >
+                          Deny
+                        </Button>
+                      </>
+                    )}
+                    {request.status === 'approved' && (
+                      <Badge variant="default">Approved</Badge>
+                    )}
+                    {request.status === 'denied' && (
+                      <Badge variant="destructive">Denied</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No join requests found.</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                You haven't received any requests to join organizations.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
     </ErrorBoundary>
   );
