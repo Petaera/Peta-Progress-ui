@@ -21,7 +21,7 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
   // Department assignment is not supported at invite time because join_requests has no department_id
   const { toast } = useToast();
 
-  console.log('InviteUserForm props:', { organizationId, onInviteSent, onClose });
+  // removed noisy debug logs
 
   const searchUser = async () => {
     if (!email) return;
@@ -68,11 +68,11 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
 
   const sendInvitation = async () => {
     if (!userFound || !organizationId) {
-      console.error('Missing data:', { userFound, organizationId });
+      // Missing data guard
       return;
     }
     
-    console.log('Sending invitation for:', { userFound, organizationId });
+    // proceed to send invitation
     setLoading(true);
     try {
       // Check the most recent invitation (if any) for this user/org
@@ -123,7 +123,7 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
         }
       }
 
-      console.log('Creating join request...');
+      // creating join request
       // Create join request
       const { data, error } = await supabase
         .from('join_requests')
@@ -139,7 +139,7 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
         throw error;
       }
 
-      console.log('Join request created:', data);
+      // join request created
 
       toast({
         title: "Invitation sent",
@@ -216,7 +216,7 @@ const InviteUserForm = ({ organizationId, departments = [], onInviteSent, onClos
         <p>• Enter the email address of the user you want to invite</p>
         <p>• The user will receive the invitation in their dashboard</p>
         <p>• They can accept or decline the invitation</p>
-        <p className="mt-2 text-blue-600">Debug: Organization ID = {organizationId || 'Not provided'}</p>
+        {/* Debug line removed */}
       </div>
     </div>
   );
