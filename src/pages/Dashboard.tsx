@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LogOut, Users, Briefcase, Clock, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import supabase from "@/utils/supabase";
 import TaskCard from "@/components/TaskCard";
@@ -51,12 +51,55 @@ const Dashboard = () => {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [completedTasks, setCompletedTasks] = useState<any[]>([]);
   const [availableTeamNames, setAvailableTeamNames] = useState<string[]>([]);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editFullName, setEditFullName] = useState<string>('');
   
   const { user: authUser, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isDemo = new URLSearchParams(location.search).get('demo') === '1';
 
   useEffect(() => {
+    if (isDemo) {
+      // Populate demo data and skip live fetching
+      const demoUser = {
+        id: 'demo-user',
+        email: 'demo@example.com',
+        full_name: 'Demo User',
+        role: 'user',
+        availability_status: 'available',
+        organization_id: 'demo-org',
+        department_id: 'demo-dept',
+        working_hours: 160,
+        organizations: { name: 'Demo Org' },
+        departments: { name: 'Engineering' }
+      } as any;
+      setUser(demoUser);
+      setIsAvailable(true);
+      const demoTasks = [
+        { id: 't1', title: 'Design Landing Page', description: 'Hero + features', status: 'in_progress', allotment_id: 'wa1', hours: 12, created_at: new Date().toISOString(), work_allotments: { title: 'Website Revamp' } },
+        { id: 't2', title: 'API Integration', description: 'Connect endpoints', status: 'todo', allotment_id: 'wa2', hours: 8, created_at: new Date().toISOString(), work_allotments: { title: 'Backend Services' } }
+      ];
+      setTasks(demoTasks as any);
+      setStats({
+        totalTasks: demoTasks.length,
+        completedTasks: 0,
+        hoursLogged: 24,
+        hoursTarget: 160,
+        teamAvailable: 3,
+        teamTotal: 5,
+      });
+      setTeamMembers([
+        { id: 'u2', full_name: 'Alex Doe', availability_status: 'available', department_id: 'demo-dept' },
+        { id: 'u3', full_name: 'Sam Lee', availability_status: 'available', department_id: 'demo-dept' },
+      ] as any);
+      setAvailableTeamNames(['Alex Doe', 'Sam Lee']);
+      setJoinRequests([]);
+      setCompletedTasks([]);
+      setLoading(false);
+      return;
+    }
     let isMounted = true;
     let timeoutId: NodeJS.Timeout;
     let channel: any;
@@ -71,6 +114,7 @@ const Dashboard = () => {
     timeoutId = setTimeout(loadData, 100);
 
     // Realtime: reflect join_requests changes instantly for this user
+    if (isDemo) return; // skip realtime in demo
     if (authUser) {
       channel = supabase
         .channel(`realtime-user-${authUser.id}`)
@@ -93,14 +137,14 @@ const Dashboard = () => {
         supabase.removeChannel(channel);
       }
     };
-  }, [authUser?.id]); // Only depend on user ID, not the entire user object
+  }, [authUser?.id, isDemo]); // Only depend on user ID, not the entire user object
 
   // Redirect admins to admin dashboard
   useEffect(() => {
-    if (user && user.role === 'admin') {
+    if (!isDemo && user && user.role === 'admin') {
       navigate('/admin');
     }
-  }, [user, navigate]);
+  }, [user, navigate, isDemo]);
 
   const fetchAdditionalData = async (profile: any) => {
     if (!authUser) return;
@@ -202,6 +246,7 @@ const Dashboard = () => {
         departments: deptResult.data
       };
       setUser(updatedUser);
+      setEditFullName(updatedUser.full_name || '');
 
       // Set tasks and logs
       const userTasks = tasksResult.data || [];
@@ -351,7 +396,7 @@ const Dashboard = () => {
   const handleSignOut = async () => {
     try {
       await signOut();
-      navigate('/auth');
+      navigate('/');
       // toast({
       //   title: "Signed out successfully",
       //   description: "You have been signed out.",
@@ -362,6 +407,27 @@ const Dashboard = () => {
         description: error.message || "Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleOpenEditProfile = () => {
+    setEditFullName(user?.full_name || '');
+    setShowEditProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!authUser) return;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: editFullName.trim() })
+        .eq('id', authUser.id);
+      if (error) throw error;
+      await fetchUserData();
+      setShowEditProfile(false);
+      toast({ title: 'Profile updated', description: 'Your profile has been updated.' });
+    } catch (e: any) {
+      toast({ title: 'Failed to update profile', description: e.message || 'Please try again.', variant: 'destructive' });
     }
   };
 
@@ -513,6 +579,13 @@ const Dashboard = () => {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0 flex-nowrap">
+              <Button
+                variant="outline"
+                className="hidden sm:inline-flex"
+                onClick={() => navigate('/')}
+              >
+                Back to Home
+              </Button>
               <AvailabilityToggle 
                 isAvailable={isAvailable} 
                 onToggle={handleAvailabilityToggle} 
@@ -536,6 +609,9 @@ const Dashboard = () => {
                   <DropdownMenuItem disabled>
                     {user.full_name || user.email}
                   </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => { e.preventDefault(); handleOpenEditProfile(); }}>
+                  Edit Profile
+                </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={e => {
@@ -699,7 +775,23 @@ const Dashboard = () => {
             <TabsList className="w-full flex flex-wrap">
               <TabsTrigger value="tasks">My Tasks</TabsTrigger>
               <TabsTrigger value="performance">Performance</TabsTrigger>
-              <TabsTrigger value="log">Daily Log</TabsTrigger>
+              <TabsTrigger 
+                value="log" 
+                title={!isAvailable ? 'Set Available to submit logs' : undefined}
+                onClick={(e) => {
+                  if (!isAvailable) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toast({
+                      title: 'Unavailable',
+                      description: 'Set your status to Available to submit daily logs.',
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+              >
+                Daily Log
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="tasks" className="space-y-4">
@@ -723,6 +815,7 @@ const Dashboard = () => {
                         }}
                         userId={authUser?.id || ''}
                         onTaskUpdated={fetchUserData}
+                        canUpdate={isAvailable}
                       />
                     ))
                   ) : (
@@ -747,6 +840,7 @@ const Dashboard = () => {
                   <PerformanceReport 
                     userId={authUser?.id || ''}
                     organizationId={user?.organization_id}
+              demo={isDemo}
                   />
                 </CardContent>
               </Card>
@@ -759,22 +853,47 @@ const Dashboard = () => {
                   <CardDescription>Record your work hours and progress</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <DailyLogForm 
-                    tasks={tasks.filter(t => t.status !== 'done').map(task => ({
-                      id: task.id,
-                      title: task.title,
-                      description: task.description,
-                      status: task.status,
-                      allotment: task.work_allotments?.title || 'No Allotment',
-                      hours: typeof task.hours === 'number' ? task.hours : Number(task.hours) || undefined,
-                    }))} 
-                  />
+                  {!isAvailable ? (
+                    <div className="text-center py-10">
+                      <p className="mb-3 text-sm text-muted-foreground">You are currently unavailable.</p>
+                      <Button onClick={() => handleAvailabilityToggle(true)}>Set Available to continue</Button>
+                    </div>
+                  ) : (
+                    <DailyLogForm 
+                      tasks={tasks.filter(t => t.status !== 'done').map(task => ({
+                        id: task.id,
+                        title: task.title,
+                        description: task.description,
+                        status: task.status,
+                        allotment: task.work_allotments?.title || 'No Allotment',
+                        hours: typeof task.hours === 'number' ? task.hours : Number(task.hours) || undefined,
+                      }))} 
+                    />
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
           </Tabs>
         </div>
       </main>
+      {/* Edit Profile Dialog */}
+      <Dialog open={showEditProfile} onOpenChange={setShowEditProfile}>
+        <DialogContent className="max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>Edit Profile</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="full-name" className="text-sm font-medium">Full Name</label>
+              <Input id="full-name" value={editFullName} onChange={(e) => setEditFullName(e.target.value)} placeholder="Your full name" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowEditProfile(false)}>Cancel</Button>
+              <Button onClick={handleSaveProfile} disabled={!editFullName.trim()}>Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={showJoinRequestsDialog} onOpenChange={setShowJoinRequestsDialog}>
         <DialogContent className="max-w-lg w-full">
           <DialogHeader>

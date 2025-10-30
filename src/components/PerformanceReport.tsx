@@ -34,17 +34,47 @@ interface PerformanceMetrics {
 interface PerformanceReportProps {
   userId: string;
   organizationId?: string;
+  demo?: boolean;
 }
 
-const PerformanceReport = ({ userId, organizationId }: PerformanceReportProps) => {
+const PerformanceReport = ({ userId, organizationId, demo = false }: PerformanceReportProps) => {
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'quarter'>('month');
   const { toast } = useToast();
 
   useEffect(() => {
+    if (demo) {
+      // Provide canned demo metrics and skip network calls
+      const demoMetrics: PerformanceMetrics = {
+        totalTasks: 8,
+        completedTasks: 3,
+        inProgressTasks: 3,
+        todoTasks: 2,
+        totalHoursLogged: 42,
+        averageHoursPerDay: 3.1,
+        completionRate: 37.5,
+        productivityScore: 72,
+        monthlyHours: {
+          current: 42,
+          target: 160,
+          percentage: (42 / 160) * 100,
+        },
+        weeklyStats: {
+          hours: 12,
+          tasksCompleted: 2,
+        },
+        monthlyStats: {
+          hours: 42,
+          tasksCompleted: 3,
+        },
+      };
+      setMetrics(demoMetrics);
+      setLoading(false);
+      return;
+    }
     fetchPerformanceMetrics();
-  }, [userId, selectedPeriod]);
+  }, [userId, selectedPeriod, demo]);
 
   const fetchPerformanceMetrics = async () => {
     setLoading(true);

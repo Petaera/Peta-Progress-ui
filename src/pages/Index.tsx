@@ -38,6 +38,7 @@ const Index = () => {
             <div className="inline-flex h-20 w-20 items-center justify-center rounded-2xl gradient-primary shadow-lg mb-4">
               <span className="text-4xl font-bold text-white">P</span>
             </div>
+            <div className="text-sm uppercase tracking-widest text-primary font-semibold">PETA-PROGRESS</div>
             
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight">
               Track Progress,<br />
@@ -46,9 +47,9 @@ const Index = () => {
               </span>
             </h1>
             
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              The modern platform for managers to guide, track, and collaborate with their teams. 
-              Make progress visible and stay connected in real-time.
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+              PETA-PROGRESS helps you organize teams and departments, assign and track tasks, log daily work, and visualize performance.
+              Built-in real-time updates keep managers and teams aligned.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
@@ -62,7 +63,7 @@ const Index = () => {
               <Button 
                 size="lg" 
                 variant="outline"
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/dashboard?demo=1')}
                 className="text-lg px-8"
               >
                 View Demo
@@ -124,8 +125,45 @@ const Index = () => {
 
       {/* Footer */}
       <footer className="border-t py-8">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>© 2025 PetaProgress. Built for teams that value progress.</p>
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-muted-foreground">
+            <div className="text-center md:text-left">
+              <div className="font-semibold text-foreground mb-2">PETA-PROGRESS</div>
+              <p>Track teams, manage work, and make progress visible.</p>
+              <div className="mt-3">
+                <p>
+                  <a
+                    href="https://petaera.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-foreground underline-offset-2 hover:underline"
+                  >
+                    Petaera Technologies
+                  </a>
+                </p>
+                <p>
+                  <a href="mailto:info@petaera.com" className="underline hover:text-foreground">
+                    info@petaera.com
+                  </a>
+                </p>
+              </div>
+            </div>
+            <div className="text-center"></div>
+            <div className="text-center md:text-right">
+              <div className="font-semibold text-foreground mb-2">Legal</div>
+              <p>
+                <button type="button" className="underline hover:text-foreground" onClick={() => navigate('/privacy')}>
+                  Privacy Policy
+                </button>
+              </p>
+              <p>
+                <button type="button" className="underline hover:text-foreground" onClick={() => navigate('/terms')}>
+                  Terms of Service
+                </button>
+              </p>
+            </div>
+          </div>
+          <div className="text-center text-xs text-muted-foreground mt-6">© 2025 PETAERA TECHNOLOGIES. All rights reserved.</div>
         </div>
       </footer>
     </div>

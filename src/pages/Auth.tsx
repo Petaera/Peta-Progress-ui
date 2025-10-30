@@ -134,6 +134,30 @@ const Auth = () => {
           </div>
           <CardTitle className="text-2xl font-bold">PetaProgress</CardTitle>
           <CardDescription>Track progress, manage teams, stay connected</CardDescription>
+          <div className="pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate('/')}
+              className="h-8 px-3 text-xs"
+            >
+              Back to Home
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-8 px-3 text-xs ml-2"
+              onClick={() => {
+                const subject = encodeURIComponent('Request for Admin Access');
+                const body = encodeURIComponent(
+                  'Hello Petaera Team,\n\nI would like to request admin access to the Peta-Progresssystem.\n\nName: <your name>\nOrganization: <your organization>\nReason: <brief reason>\n\nThank you.'
+                );
+                window.location.href = `mailto:info@petaera.com?subject=${subject}&body=${body}`;
+              }}
+            >
+              Contact for admin access
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="signin" className="w-full">

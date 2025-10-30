@@ -19,13 +19,22 @@ interface TaskCardProps {
   task: Task;
   userId: string;
   onTaskUpdated?: () => void;
+  canUpdate?: boolean;
 }
 
-const TaskCard = ({ task, userId, onTaskUpdated }: TaskCardProps) => {
+const TaskCard = ({ task, userId, onTaskUpdated, canUpdate = true }: TaskCardProps) => {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const updateTaskStatus = async (newStatus: "todo" | "in_progress" | "done") => {
+    if (!canUpdate) {
+      toast({
+        title: "Unavailable",
+        description: "Set your status to Available to update tasks or log work.",
+        variant: "destructive",
+      });
+      return;
+    }
     setLoading(true);
     try {
       const { error } = await supabase

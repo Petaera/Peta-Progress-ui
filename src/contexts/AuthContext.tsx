@@ -27,6 +27,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let isMounted = true;
     let subscription: any = null;
+    let intervalId: any = null;
+    const HEARTBEAT_MS = 5 * 60 * 1000; // 5 minutes
 
     const initializeAuth = async () => {
       try {
@@ -65,9 +67,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     subscription = authSubscription;
 
+    // Heartbeat to keep session fresh
+    intervalId = setInterval(async () => {
+      try {
+        await supabase.auth.getSession();
+      } catch (_) {
+        // ignore
+      }
+    }, HEARTBEAT_MS);
+
+    // Refresh on tab focus/visibility
+    const onVisibility = async () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          await supabase.auth.getSession();
+        } catch (_) {}
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       isMounted = false;
       clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibility);
       if (subscription) {
         subscription.unsubscribe();
       }

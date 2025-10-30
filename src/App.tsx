@@ -13,6 +13,8 @@ import NotFound from "./pages/NotFound";
 import DatabaseTest from "./components/DatabaseTest";
 import ProfileDebugger from "./components/ProfileDebugger";
 import ResetPassword from "./pages/ResetPassword";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +76,8 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
             {/* Route aliases for robustness if emails/apps link differently */}
             <Route path="/auth/reset-password" element={<ResetPassword />} />
             <Route path="/resetpassword" element={<ResetPassword />} />

@@ -96,6 +96,72 @@ interface ActivityItem {
   message: string;
 }
 
+// Lightweight task detail card used in the View dialog per row
+function TaskDetailCard({ task, users, workAllotments }: { task: Task; users: User[]; workAllotments: WorkAllotment[] }) {
+  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<any[]>([]);
+  const assignee = users.find(u => u.id === task.user_id);
+  const allotment = workAllotments.find(w => w.id === task.allotment_id);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('daily_logs')
+          .select('log_date, tasks_completed, hours_spent')
+          .eq('task_id', task.id)
+          .order('log_date', { ascending: false })
+          .limit(5);
+        if (error) throw error;
+        if (active) setLogs(data || []);
+      } catch (_) {
+        if (active) setLogs([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [task.id]);
+
+  return (
+    <div className="space-y-4">
+      <div className="border rounded-lg p-4 bg-muted/50">
+        <div className="flex items-center justify-between">
+          <div className="font-semibold text-lg">{task.title}</div>
+          <Badge variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}>
+            {task.status}
+          </Badge>
+        </div>
+        <div className="text-sm text-muted-foreground mt-1">
+          {task.description || 'No description'}
+        </div>
+        <div className="text-xs text-muted-foreground mt-2 space-y-1">
+          <div>Allotment: <span className="font-medium">{allotment?.title || 'Unknown'}</span></div>
+          <div>Assignee: <span className="font-medium">{assignee?.full_name || assignee?.email || 'Unknown'}</span></div>
+          <div>Created: {new Date(task.created_at).toLocaleString()}</div>
+        </div>
+      </div>
+      <div>
+        <div className="font-semibold mb-2">Recent Logs</div>
+        {loading ? (
+          <div className="text-center py-4 text-sm text-muted-foreground">Loading logs...</div>
+        ) : logs.length > 0 ? (
+          <ul className="text-sm space-y-1">
+            {logs.map((l: any, i: number) => (
+              <li key={l.log_date + '-' + i}>
+                <strong>{l.log_date}:</strong> {l.tasks_completed} ({l.hours_spent} hrs)
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-sm text-muted-foreground italic">No recent logs for this task.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -107,10 +173,14 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [allotmentMonthlyHours, setAllotmentMonthlyHours] = useState<Record<string, number>>({});
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
+  const [recentActivityLimit, setRecentActivityLimit] = useState<number>(5);
+  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string }>>([]);
   const [showUserDetail, setShowUserDetail] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [userDetail, setUserDetail] = useState<any>(null);
   const [userDetailLoading, setUserDetailLoading] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editFullName, setEditFullName] = useState<string>("");
   
   // state for attendance expand/collapse in admin detail modal
   const [showAllSess, setShowAllSess] = useState(false);
@@ -124,6 +194,8 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (authUser) {
       fetchAdminData();
+    } else {
+      setLoading(false);
     }
   }, [authUser]);
 
@@ -142,7 +214,7 @@ const AdminDashboard = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'user_sessions' },
-        () => fetchRecentActivity()
+        () => { fetchRecentActivity(); fetchOnlineUsers(); }
       )
       // Profiles updates where user joins/leaves this org
       .on(
@@ -182,6 +254,14 @@ const AdminDashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization?.id, workAllotments.length]);
 
+  // Load recent activity and online users as soon as org is known
+  useEffect(() => {
+    if (!organization?.id) return;
+    fetchRecentActivity();
+    fetchOnlineUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organization?.id]);
+
   const fetchAdminData = async () => {
     if (!authUser) return;
 
@@ -203,6 +283,7 @@ const AdminDashboard = () => {
       }
 
       setUser(profile);
+      setEditFullName(profile.full_name || "");
 
       // Fetch organization data
       if (profile.organization_id) {
@@ -233,8 +314,9 @@ const AdminDashboard = () => {
 
         // After fetching allotments, refresh monthly stats
         await fetchAllotmentMonthlyStats();
-        // And refresh recent activity
-        await fetchRecentActivity();
+        // Kick off activity/online refresh without delaying the main load
+        fetchRecentActivity();
+        fetchOnlineUsers();
       }
 
     } catch (error: any) {
@@ -357,16 +439,41 @@ const AdminDashboard = () => {
         .slice(0, 20);
 
       setRecentActivity(merged);
+      setRecentActivityLimit(5);
     } catch (e) {
       console.error('Failed to fetch recent activity', e);
       setRecentActivity([]);
     }
   };
 
+  const fetchOnlineUsers = async () => {
+    if (!organization?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('user_sessions')
+        .select('user_id, logout_time, profiles!inner(id, full_name, email, organization_id)')
+        .eq('profiles.organization_id', organization.id)
+        .is('logout_time', null);
+      if (error) throw error;
+      const ids = Array.from(new Set((data || []).map((s: any) => s.user_id)));
+      const list = ids
+        .map((id: string) => {
+          const u = users.find(us => us.id === id);
+          const name = u?.full_name || u?.email || 'User';
+          return { id, name };
+        })
+        .filter(Boolean);
+      setOnlineUsers(list);
+    } catch (e) {
+      console.error('Failed to fetch online users', e);
+      setOnlineUsers([]);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await signOut();
-      navigate('/auth');
+      navigate('/');
       toast({
         title: "Signed out successfully",
         description: "You have been signed out.",
@@ -377,6 +484,27 @@ const AdminDashboard = () => {
         description: error.message || "Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleOpenEditProfile = () => {
+    setEditFullName(user?.full_name || "");
+    setShowEditProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!authUser) return;
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: editFullName.trim() })
+        .eq('id', authUser.id);
+      if (error) throw error;
+      await fetchAdminData();
+      setShowEditProfile(false);
+      toast({ title: 'Profile updated', description: 'Your profile has been updated.' });
+    } catch (e: any) {
+      toast({ title: 'Failed to update profile', description: e.message || 'Please try again.', variant: 'destructive' });
     }
   };
 
@@ -576,6 +704,41 @@ const AdminDashboard = () => {
             </div>
           )}
         </div>
+
+        {/* Worked Time by Day (from login sessions) */}
+        <div>
+          <h4 className="font-semibold mb-2">Worked Time by Day</h4>
+          {(() => {
+            const src = showAllSess && allSessions ? allSessions : userDetail.sessions;
+            if (!src || src.length === 0) return <div className="text-sm text-muted-foreground italic">No session data.</div>;
+            const daily: Record<string, number> = {};
+            for (const s of src) {
+              const start = s.login_time ? new Date(s.login_time) : null;
+              const end = s.logout_time ? new Date(s.logout_time) : null;
+              const sec = typeof s.duration_seconds === 'number'
+                ? s.duration_seconds
+                : (start ? Math.max(0, Math.floor(((end ? end : new Date()).getTime() - start.getTime())/1000)) : 0);
+              if (!start) continue;
+              const key = start.toISOString().slice(0,10);
+              daily[key] = (daily[key] || 0) + sec;
+            }
+            const items = Object.entries(daily)
+              .map(([date, sec]) => ({ date, hours: Math.round((sec/3600)*10)/10 }))
+              .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              .slice(0, 7);
+            if (items.length === 0) return <div className="text-sm text-muted-foreground italic">No worked time recorded.</div>;
+            return (
+              <ul className="text-sm space-y-1">
+                {items.map(it => (
+                  <li key={it.date} className="flex justify-between">
+                    <span className="text-muted-foreground">{new Date(it.date).toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' })}</span>
+                    <span className="font-medium">{it.hours}h</span>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
+        </div>
       </div>
     );
   } else {
@@ -607,6 +770,13 @@ const AdminDashboard = () => {
                   <span className="text-xs text-muted-foreground">Administrator</span>
                 </span>
                 <Badge variant="secondary" className="bg-green-100 text-green-800 hidden sm:inline-block">Admin</Badge>
+                <Button
+                  variant="outline"
+                  className="hidden md:inline-flex"
+                  onClick={() => navigate('/')}
+                >
+                  Home
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <div>
@@ -620,6 +790,7 @@ const AdminDashboard = () => {
                   <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuLabel>Profile</DropdownMenuLabel>
                     <DropdownMenuItem disabled>{user.full_name || user.email}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={(e) => { e.preventDefault(); handleOpenEditProfile(); }}>Edit Profile</DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={(e) => { e.preventDefault(); handleSignOut(); }}>
                       <LogOut className="h-4 w-4 mr-2" /> Sign out
@@ -675,6 +846,27 @@ const AdminDashboard = () => {
               </CardContent>
             </Card>
 
+            <Card className="shadow-soft">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Online Now</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{onlineUsers.length}</div>
+                <p className="text-xs text-muted-foreground mt-1">Currently logged-in users</p>
+                {onlineUsers.length > 0 && (
+                  <div className="mt-2 text-xs text-foreground/90 space-y-1 max-h-24 overflow-y-auto">
+                    {onlineUsers.slice(0,6).map(u => (
+                      <div key={u.id} className="truncate">{u.name}</div>
+                    ))}
+                    {onlineUsers.length > 6 && (
+                      <div className="text-muted-foreground">+{onlineUsers.length - 6} more</div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
           </div>
 
           {/* Management Tabs */}
@@ -702,7 +894,7 @@ const AdminDashboard = () => {
                       {recentActivity.length === 0 && (
                         <div className="text-sm text-muted-foreground">No recent activity.</div>
                       )}
-                      {recentActivity.map((evt) => {
+                      {recentActivity.slice(0, recentActivityLimit).map((evt) => {
                         const color = evt.type === 'login'
                           ? 'bg-green-500'
                           : evt.type === 'logout'
@@ -720,6 +912,27 @@ const AdminDashboard = () => {
                           </div>
                         );
                       })}
+                      {recentActivity.length > 0 && (
+                        <div className="pt-1">
+                          {recentActivityLimit < recentActivity.length ? (
+                            <button
+                              type="button"
+                              className="text-xs underline text-primary hover:text-primary/80"
+                              onClick={() => setRecentActivityLimit(Math.min(recentActivityLimit + 5, recentActivity.length))}
+                            >
+                              Show more
+                            </button>
+                          ) : recentActivity.length > 5 ? (
+                            <button
+                              type="button"
+                              className="text-xs underline text-primary hover:text-primary/80"
+                              onClick={() => setRecentActivityLimit(5)}
+                            >
+                              Show less
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -800,20 +1013,7 @@ const AdminDashboard = () => {
                       </DialogContent>
                     </Dialog>
 
-                    <Button 
-                      className="w-full justify-start" 
-                      variant="outline"
-                      onClick={() => {
-                        // Navigate to users tab to show performance overview
-                        const usersTab = document.querySelector('[value="users"]') as HTMLElement;
-                        if (usersTab) {
-                          usersTab.click();
-                        }
-                      }}
-                    >
-                      <BarChart3 className="h-4 w-4 mr-2" />
-                      View Reports
-                    </Button>
+                    {/* Reports quick action removed */}
                   </CardContent>
                 </Card>
               </div>
@@ -918,27 +1118,6 @@ const AdminDashboard = () => {
                     </Card>
 
                     <div className="flex justify-end gap-2">
-                      <Button 
-                        variant="outline"
-                        onClick={async () => {
-                          console.log('Testing database connection...');
-                          try {
-                            const { data, error } = await supabase
-                              .from('join_requests')
-                              .select('*')
-                              .limit(1);
-                            console.log('Database test result:', { data, error });
-                            toast({
-                              title: "Database test",
-                              description: error ? `Error: ${error.message}` : `Success: Found ${data?.length || 0} records`,
-                            });
-                          } catch (err) {
-                            console.error('Database test error:', err);
-                          }
-                        }}
-                      >
-                        Test DB
-                      </Button>
                       <Dialog>
                         <DialogTrigger asChild>
                           <Button>
@@ -1014,6 +1193,10 @@ const AdminDashboard = () => {
                                     user={user}
                                     departments={departments}
                                     onUserUpdated={fetchAdminData}
+                                    currentUserId={authUser?.id}
+                                    onUserRemoved={async () => {
+                                      await fetchAdminData();
+                                    }}
                                   />
                                 </DialogContent>
                               </Dialog>
@@ -1038,70 +1221,7 @@ const AdminDashboard = () => {
                                   />
                                 </DialogContent>
                               </Dialog>
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    disabled={user.id === authUser?.id}
-                                    title={user.id === authUser?.id ? 'You cannot remove yourself' : undefined}
-                                  >
-                                    Remove from Org
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>Remove User from Organization</DialogTitle>
-                                    <DialogDescription>
-                                      This will detach the user from your organization and clear their department. They will immediately lose access to org resources.
-                                    </DialogDescription>
-                                  </DialogHeader>
-                                  <div className="space-y-3 text-sm">
-                                    <p>
-                                      User: <strong>{user.full_name || user.email}</strong>
-                                    </p>
-                                    <p className="text-muted-foreground">
-                                      Warning: This action does not delete the account, but will remove their organization and department associations.
-                                    </p>
-                                  </div>
-                                  <div className="flex justify-end gap-2 mt-4">
-                                    <Button variant="outline">Cancel</Button>
-                                    <Button
-                                      variant="destructive"
-                                      onClick={async () => {
-                                        if (user.id === authUser?.id) {
-                                          toast({
-                                            title: 'Action not allowed',
-                                            description: 'You cannot remove yourself from the organization.',
-                                            variant: 'destructive',
-                                          });
-                                          return;
-                                        }
-                                        try {
-                                          const { error } = await supabase
-                                            .from('profiles')
-                                            .update({ organization_id: null, department_id: null })
-                                            .eq('id', user.id);
-                                          if (error) throw error;
-                                          toast({
-                                            title: 'User removed from organization',
-                                            description: `${user.full_name || user.email} no longer belongs to this organization.`,
-                                          });
-                                          await fetchAdminData();
-                                        } catch (e: any) {
-                                          toast({
-                                            title: 'Failed to remove user',
-                                            description: e.message || 'Please try again.',
-                                            variant: 'destructive',
-                                          });
-                                        }
-                                      }}
-                                    >
-                                      Confirm Remove
-                                    </Button>
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
+                              {/* Removal action moved into Edit dialog */}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1367,7 +1487,21 @@ const AdminDashboard = () => {
                             </TableCell>
                             <TableCell className="hidden xl:table-cell">{new Date(task.created_at).toLocaleDateString()}</TableCell>
                             <TableCell>
-                              <Button size="sm" variant="outline">Edit</Button>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline">Edit</Button>
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button size="sm" variant="secondary">View</Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="max-w-2xl w-full">
+                                    <DialogHeader>
+                                      <DialogTitle>Task Details</DialogTitle>
+                                      <DialogDescription>Overview and recent logs</DialogDescription>
+                                    </DialogHeader>
+                                    <TaskDetailCard task={task} users={users} workAllotments={workAllotments} />
+                                  </DialogContent>
+                                </Dialog>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1388,6 +1522,24 @@ const AdminDashboard = () => {
             <DialogTitle>User Detail</DialogTitle>
           </DialogHeader>
           {userDetailContent}
+        </DialogContent>
+      </Dialog>
+      {/* Edit Profile Dialog */}
+      <Dialog open={showEditProfile} onOpenChange={setShowEditProfile}>
+        <DialogContent className="max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>Edit Profile</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="admin-full-name">Full Name</Label>
+              <Input id="admin-full-name" value={editFullName} onChange={(e) => setEditFullName(e.target.value)} placeholder="Your full name" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowEditProfile(false)}>Cancel</Button>
+              <Button onClick={handleSaveProfile} disabled={!editFullName.trim()}>Save</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </ErrorBoundary>

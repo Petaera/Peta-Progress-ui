@@ -19,9 +19,11 @@ interface EditUserFormProps {
   departments: Array<{ id: string; name: string }>;
   onUserUpdated: () => void;
   onClose?: () => void;
+  currentUserId?: string;
+  onUserRemoved?: () => void;
 }
 
-const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFormProps) => {
+const EditUserForm = ({ user, departments, onUserUpdated, onClose, currentUserId, onUserRemoved }: EditUserFormProps) => {
   const [departmentId, setDepartmentId] = useState(user.department_id || "none");
   const [workingHours, setWorkingHours] = useState<string>(
     typeof user.working_hours === 'number' ? String(user.working_hours) : ''
@@ -71,6 +73,40 @@ const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFor
         title: "Failed to update department",
         description: error.message || "Please try again.",
         variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeFromOrganization = async () => {
+    if (user.id === currentUserId) {
+      toast({
+        title: "Action not allowed",
+        description: "You cannot remove yourself from the organization.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ organization_id: null, department_id: null })
+        .eq('id', user.id);
+      if (error) throw error;
+      toast({
+        title: 'User removed from organization',
+        description: `${user.full_name || user.email} no longer belongs to this organization.`,
+      });
+      onUserUpdated();
+      if (onUserRemoved) onUserRemoved();
+      if (onClose) onClose();
+    } catch (error: any) {
+      toast({
+        title: 'Failed to remove user',
+        description: error.message || 'Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setLoading(false);
@@ -150,6 +186,18 @@ const EditUserForm = ({ user, departments, onUserUpdated, onClose }: EditUserFor
       >
         {loading ? "Updating..." : "Save Changes"}
       </Button>
+
+      <div className="pt-2">
+        <Button 
+          variant="destructive" 
+          onClick={removeFromOrganization}
+          disabled={loading || user.id === currentUserId}
+          className="w-full"
+          title={user.id === currentUserId ? 'You cannot remove yourself' : undefined}
+        >
+          Remove from Organization
+        </Button>
+      </div>
 
       <div className="text-xs text-muted-foreground">
         <p>• You can change department and monthly target hours</p>
