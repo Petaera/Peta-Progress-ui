@@ -4,25 +4,37 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import supabase from "@/utils/supabase";
 
 const ResetPassword = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   useEffect(() => {
-    // When redirected from email, Supabase includes a session hash; ensure session is available
+    // If Supabase redirected with an error, reflect it immediately
+    const params = new URLSearchParams(location.search);
+    const errorCode = params.get("error_code");
+    const errorDescription = params.get("error_description");
+    if (errorCode) {
+      setLinkError(errorDescription || errorCode);
+      setReady(false);
+      setLoading(false);
+      return;
+    }
+
+    // When redirected from email, Supabase includes a session; ensure it's ready
     const init = async () => {
       try {
         const { data } = await supabase.auth.getSession();
         if (!data.session) {
-          // Try to recover from URL (supabase handles automatically)
-          // Give a moment for the session to initialize
+          // Give a moment for the session to initialize automatically from URL
           setTimeout(async () => {
             const { data: data2 } = await supabase.auth.getSession();
             setReady(!!data2.session);
@@ -37,7 +49,7 @@ const ResetPassword = () => {
       }
     };
     init();
-  }, []);
+  }, [location.search]);
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,11 +87,17 @@ const ResetPassword = () => {
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Link expired or invalid</CardTitle>
-            <CardDescription>Please request a new password reset from the sign-in page.</CardDescription>
+            <CardTitle>{linkError ? "Reset link issue" : "Link expired or invalid"}</CardTitle>
+            <CardDescription>
+              {linkError
+                ? linkError
+                : "Please request a new password reset from the sign-in page."}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => navigate("/auth")}>Back to Sign In</Button>
+            <div className="flex gap-2">
+              <Button onClick={() => navigate("/auth")}>Back to Sign In</Button>
+            </div>
           </CardContent>
         </Card>
       </div>
