@@ -31,12 +31,14 @@ import supabase from "@/utils/supabase";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import InviteUserForm from "@/components/InviteUserForm";
 import CreateDepartmentForm from "@/components/CreateDepartmentForm";
+import EditDepartmentForm from "@/components/EditDepartmentForm";
 import EditUserForm from "@/components/EditUserForm";
 import EditOrganizationForm from "@/components/EditOrganizationForm";
 import TaskAssignmentForm from "@/components/TaskAssignmentForm";
 import CreateWorkAllotmentForm from "@/components/CreateWorkAllotmentForm";
 import PerformanceReport from "@/components/PerformanceReport";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Progress } from "@/components/ui/progress";
 
 interface Organization {
   id: string;
@@ -86,6 +88,14 @@ interface User {
   last_seen: string;
 }
 
+type ActivityType = 'login' | 'logout' | 'task_created' | 'work_log';
+interface ActivityItem {
+  id: string;
+  type: ActivityType;
+  at: string; // ISO timestamp
+  message: string;
+}
+
 
 const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -95,6 +105,8 @@ const AdminDashboard = () => {
   const [workAllotments, setWorkAllotments] = useState<WorkAllotment[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [allotmentMonthlyHours, setAllotmentMonthlyHours] = useState<Record<string, number>>({});
+  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
   const [showUserDetail, setShowUserDetail] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [userDetail, setUserDetail] = useState<any>(null);
@@ -126,11 +138,35 @@ const AdminDashboard = () => {
         { event: '*', schema: 'public', table: 'join_requests', filter: `organization_id=eq.${organization.id}` },
         () => fetchAdminData()
       )
+      // User sessions in this org (logins/logouts)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_sessions' },
+        () => fetchRecentActivity()
+      )
       // Profiles updates where user joins/leaves this org
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'profiles', filter: `organization_id=eq.${organization.id}` },
         () => fetchAdminData()
+      )
+      // Tasks created/updated/deleted within this org
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks', filter: `organization_id=eq.${organization.id}` },
+        () => fetchAdminData()
+      )
+      // Work allotments changed within this org
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'work_allotments', filter: `organization_id=eq.${organization.id}` },
+        () => fetchAdminData()
+      )
+      // Any daily log change should recompute monthly stats; query itself filters by org
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'daily_logs' },
+        () => fetchAllotmentMonthlyStats()
       )
       .subscribe();
 
@@ -138,6 +174,13 @@ const AdminDashboard = () => {
       supabase.removeChannel(channel);
     };
   }, [organization?.id]);
+
+  // Load monthly hours stats per work allotment
+  useEffect(() => {
+    if (!organization?.id) return;
+    fetchAllotmentMonthlyStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organization?.id, workAllotments.length]);
 
   const fetchAdminData = async () => {
     if (!authUser) return;
@@ -187,6 +230,11 @@ const AdminDashboard = () => {
         setWorkAllotments(workAllotmentsResult.data || []);
         setTasks(tasksResult.data || []);
         setUsers(usersResult.data || []);
+
+        // After fetching allotments, refresh monthly stats
+        await fetchAllotmentMonthlyStats();
+        // And refresh recent activity
+        await fetchRecentActivity();
       }
 
     } catch (error: any) {
@@ -198,6 +246,120 @@ const AdminDashboard = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAllotmentMonthlyStats = async () => {
+    if (!organization?.id) return;
+    try {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+      const startStr = monthStart.toISOString().slice(0, 10);
+      const endStr = monthEnd.toISOString().slice(0, 10);
+
+      const { data, error } = await supabase
+        .from('daily_logs')
+        .select('hours_spent, tasks!inner(id, allotment_id, organization_id)')
+        .gte('log_date', startStr)
+        .lte('log_date', endStr)
+        .eq('tasks.organization_id', organization.id);
+
+      if (error) throw error;
+
+      const totals: Record<string, number> = {};
+      for (const row of (data as any[]) || []) {
+        const aid = row?.tasks?.allotment_id as string | undefined;
+        const hrs = Number(row?.hours_spent) || 0;
+        if (aid) totals[aid] = (totals[aid] || 0) + hrs;
+      }
+      setAllotmentMonthlyHours(totals);
+    } catch (e) {
+      console.error('Failed to load allotment monthly stats', e);
+      setAllotmentMonthlyHours({});
+    }
+  };
+
+  const fetchRecentActivity = async () => {
+    if (!organization?.id) return;
+    try {
+      // Fetch recent sessions (logins/logouts)
+      const sessionsPromise = supabase
+        .from('user_sessions')
+        .select('id, user_id, login_time, logout_time, profiles!inner(organization_id)')
+        .eq('profiles.organization_id', organization.id)
+        .order('login_time', { ascending: false })
+        .limit(20);
+
+      // Fetch recent task creations
+      const tasksPromise = supabase
+        .from('tasks')
+        .select('id, title, created_at, organization_id')
+        .eq('organization_id', organization.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      // Fetch recent work logs submissions
+      const logsPromise = supabase
+        .from('daily_logs')
+        .select('id, created_at, hours_spent, user_id, task_id, tasks(title, organization_id)')
+        .eq('tasks.organization_id', organization.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      const [{ data: ses = [] }, { data: tks = [] }, { data: lgs = [] }] = await Promise.all([
+        sessionsPromise,
+        tasksPromise,
+        logsPromise,
+      ] as any);
+
+      const userName = (uid: string) => users.find(u => u.id === uid)?.full_name || users.find(u => u.id === uid)?.email || 'User';
+
+      const sessionEvents: ActivityItem[] = ([] as any[]).concat(ses || []).flatMap((s: any) => {
+        const events: ActivityItem[] = [];
+        if (s.login_time) {
+          events.push({
+            id: `${s.id}-login`,
+            type: 'login',
+            at: s.login_time,
+            message: `${userName(s.user_id)} logged in`,
+          });
+        }
+        if (s.logout_time) {
+          events.push({
+            id: `${s.id}-logout`,
+            type: 'logout',
+            at: s.logout_time,
+            message: `${userName(s.user_id)} logged out`,
+          });
+        }
+        return events;
+      });
+
+      const taskEvents: ActivityItem[] = ([] as any[]).concat(tks || []).map((t: any) => ({
+        id: `task-${t.id}`,
+        type: 'task_created',
+        at: t.created_at,
+        message: `Task created: ${t.title}`,
+      }));
+
+      const logEvents: ActivityItem[] = ([] as any[]).concat(lgs || []).map((l: any) => ({
+        id: `log-${l.id}`,
+        type: 'work_log',
+        at: l.created_at,
+        message: `${userName(l.user_id)} submitted ${Number(l.hours_spent) || 0}h on ${l.tasks?.title || 'a task'}`,
+      }));
+
+      const merged = [...sessionEvents, ...taskEvents, ...logEvents]
+        .filter(e => !!e.at)
+        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+        .slice(0, 20);
+
+      setRecentActivity(merged);
+    } catch (e) {
+      console.error('Failed to fetch recent activity', e);
+      setRecentActivity([]);
     }
   };
 
@@ -537,27 +699,27 @@ const AdminDashboard = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">New user joined</p>
-                          <p className="text-xs text-muted-foreground">2 hours ago</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="h-2 w-2 bg-blue-500 rounded-full"></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">Work allotment created</p>
-                          <p className="text-xs text-muted-foreground">5 hours ago</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="h-2 w-2 bg-orange-500 rounded-full"></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">Task completed</p>
-                          <p className="text-xs text-muted-foreground">1 day ago</p>
-                        </div>
-                      </div>
+                      {recentActivity.length === 0 && (
+                        <div className="text-sm text-muted-foreground">No recent activity.</div>
+                      )}
+                      {recentActivity.map((evt) => {
+                        const color = evt.type === 'login'
+                          ? 'bg-green-500'
+                          : evt.type === 'logout'
+                          ? 'bg-gray-400'
+                          : evt.type === 'task_created'
+                          ? 'bg-blue-500'
+                          : 'bg-orange-500';
+                        return (
+                          <div key={evt.id} className="flex items-center gap-3">
+                            <div className={`h-2 w-2 rounded-full ${color}`}></div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{evt.message}</p>
+                              <p className="text-xs text-muted-foreground">{new Date(evt.at).toLocaleString()}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
@@ -1001,7 +1163,21 @@ const AdminDashboard = () => {
                               {users.filter(u => u.department_id === dept.id).length} members
                             </TableCell>
                             <TableCell>
-                              <Button size="sm" variant="outline">Edit</Button>
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button size="sm" variant="outline">Edit</Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Edit Department</DialogTitle>
+                                    <DialogDescription>Rename this department</DialogDescription>
+                                  </DialogHeader>
+                                  <EditDepartmentForm 
+                                    department={dept}
+                                    onDepartmentUpdated={fetchAdminData}
+                                  />
+                                </DialogContent>
+                              </Dialog>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1021,6 +1197,29 @@ const AdminDashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
+                    {/* Summary statistics for this month */}
+                    <Card className="bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200">
+                      <CardHeader>
+                        <CardTitle>Monthly Progress</CardTitle>
+                        <CardDescription>Progress against this month's targets across all allotments</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {(() => {
+                          const totalTarget = workAllotments.reduce((sum, a) => sum + (Number(a.target_hours) || 0), 0);
+                          const totalLogged = Object.values(allotmentMonthlyHours).reduce((sum, n) => sum + (Number(n) || 0), 0);
+                          const pct = totalTarget > 0 ? Math.min(100, Math.round((totalLogged / totalTarget) * 100)) : 0;
+                          return (
+                            <div>
+                              <div className="flex justify-between text-sm mb-2">
+                                <div className="font-medium">{totalLogged}h logged</div>
+                                <div className="text-muted-foreground">{pct}% of {totalTarget}h target</div>
+                              </div>
+                              <Progress value={pct} className="h-2" />
+                            </div>
+                          );
+                        })()}
+                      </CardContent>
+                    </Card>
                     <div className="flex justify-end">
                       <Dialog>
                         <DialogTrigger asChild>
@@ -1051,6 +1250,7 @@ const AdminDashboard = () => {
                           <TableHead>Title</TableHead>
                           <TableHead className="hidden md:table-cell">Department</TableHead>
                           <TableHead className="hidden md:table-cell">Target Hours</TableHead>
+                          <TableHead className="hidden md:table-cell">This Month</TableHead>
                           <TableHead className="hidden lg:table-cell">Duration</TableHead>
                           <TableHead className="hidden lg:table-cell">Tasks</TableHead>
                           <TableHead>Actions</TableHead>
@@ -1064,6 +1264,24 @@ const AdminDashboard = () => {
                               {departments.find(d => d.id === allotment.department_id)?.name || 'No Department'}
                             </TableCell>
                             <TableCell className="hidden md:table-cell">{allotment.target_hours}h</TableCell>
+                            <TableCell className="hidden md:table-cell">
+                              {(() => {
+                                const logged = Number(allotmentMonthlyHours[allotment.id] || 0);
+                                const target = Number(allotment.target_hours || 0);
+                                const pct = target > 0 ? Math.min(100, Math.round((logged / target) * 100)) : 0;
+                                const remaining = Math.max(target - logged, 0);
+                                return (
+                                  <div className="min-w-[200px]">
+                                    <div className="flex justify-between text-xs mb-1">
+                                      <span>{logged}h</span>
+                                      <span>{pct}%</span>
+                                    </div>
+                                    <Progress value={pct} className="h-2" />
+                                    <div className="text-xs text-muted-foreground mt-1">{remaining}h remaining</div>
+                                  </div>
+                                );
+                              })()}
+                            </TableCell>
                             <TableCell className="hidden lg:table-cell">
                               {allotment.start_date} - {allotment.end_date || 'Ongoing'}
                             </TableCell>
