@@ -335,10 +335,10 @@ const Dashboard = () => {
         const newAvailable = Math.max(0, (prev.teamAvailable || 0) + delta);
         return { ...prev, teamAvailable: newAvailable } as any;
       });
-      toast({
-        title: available ? "You're now available" : "You're now unavailable",
-        description: "Your status has been updated.",
-      });
+      // toast({
+      //   title: available ? "You're now available" : "You're now unavailable",
+      //   description: "Your status has been updated.",
+      // });
     } catch (error: any) {
       toast({
         title: "Failed to update status",
@@ -352,10 +352,10 @@ const Dashboard = () => {
     try {
       await signOut();
       navigate('/auth');
-      toast({
-        title: "Signed out successfully",
-        description: "You have been signed out.",
-      });
+      // toast({
+      //   title: "Signed out successfully",
+      //   description: "You have been signed out.",
+      // });
     } catch (error: any) {
       toast({
         title: "Sign out failed",

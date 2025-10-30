@@ -36,6 +36,7 @@ import EditOrganizationForm from "@/components/EditOrganizationForm";
 import TaskAssignmentForm from "@/components/TaskAssignmentForm";
 import CreateWorkAllotmentForm from "@/components/CreateWorkAllotmentForm";
 import PerformanceReport from "@/components/PerformanceReport";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface Organization {
   id: string;
@@ -427,29 +428,42 @@ const AdminDashboard = () => {
         {/* Header */}
         <header className="border-b bg-card shadow-soft">
           <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center justify-between gap-4 flex-col sm:flex-row sm:items-center">
-              <div className="flex items-center gap-4 w-full sm:w-auto">
-                <div className="h-10 w-10 rounded-xl gradient-primary flex items-center justify-center">
-                  <span className="text-xl font-bold text-white">A</span>
+            <div className="flex items-center justify-between gap-3 flex-nowrap min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-semibold">
+                  A
                 </div>
-                <div>
-                  <h1 className="text-lg sm:text-xl font-bold">Admin Dashboard</h1>
-                  <p className="text-xs sm:text-sm text-muted-foreground truncate max-w-[70vw] sm:max-w-none">{organization?.name}</p>
+                <div className="leading-tight truncate max-w-[40vw]">
+                  <div className="font-semibold truncate">Admin Dashboard</div>
+                  <div className="text-xs text-muted-foreground truncate">{organization?.name || 'No Organization'}</div>
                 </div>
               </div>
-              
-              <div className="flex items-center gap-3 sm:gap-4 self-end sm:self-auto">
-                <Badge variant="secondary" className="bg-green-100 text-green-800">
-                  Admin
-                </Badge>
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-primary text-primary-foreground">
-                    {user.full_name?.split(' ').map(n => n[0]).join('') || 'A'}
-                  </AvatarFallback>
-                </Avatar>
-                <Button variant="ghost" size="icon" onClick={handleSignOut}>
-                  <LogOut className="h-5 w-5" />
-                </Button>
+
+              <div className="flex items-center gap-2 flex-shrink-0 flex-nowrap">
+                <span className="hidden sm:flex flex-col items-end leading-tight mr-1">
+                  <span className="text-sm font-medium truncate max-w-[140px]">{user.full_name || user.email}</span>
+                  <span className="text-xs text-muted-foreground">Administrator</span>
+                </span>
+                <Badge variant="secondary" className="bg-green-100 text-green-800 hidden sm:inline-block">Admin</Badge>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <div>
+                      <Avatar className="h-9 w-9 cursor-pointer">
+                        <AvatarFallback className="bg-primary/10 text-primary">
+                          {user.full_name?.split(' ')[0]?.[0] || 'A'}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>Profile</DropdownMenuLabel>
+                    <DropdownMenuItem disabled>{user.full_name || user.email}</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={(e) => { e.preventDefault(); handleSignOut(); }}>
+                      <LogOut className="h-4 w-4 mr-2" /> Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -504,14 +518,14 @@ const AdminDashboard = () => {
           {/* Management Tabs */}
           <Tabs defaultValue="overview" className="space-y-4">
             <div className="w-full overflow-x-auto">
-            <TabsList className="grid w-full min-w-max grid-cols-3 sm:grid-cols-6 gap-2">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="organizations">Organizations</TabsTrigger>
-              <TabsTrigger value="users">Users</TabsTrigger>
-              <TabsTrigger value="departments">Departments</TabsTrigger>
-              <TabsTrigger value="allotments">Work Allotments</TabsTrigger>
-              <TabsTrigger value="tasks">Tasks</TabsTrigger>
-            </TabsList>
+              <TabsList className="flex flex-nowrap gap-2 w-max sm:grid sm:grid-cols-6 sm:w-full sm:min-w-0">
+                <TabsTrigger value="overview" className="min-w-[120px] py-2 px-4 sm:min-w-0">Overview</TabsTrigger>
+                <TabsTrigger value="organizations" className="min-w-[120px] py-2 px-4 sm:min-w-0">Organizations</TabsTrigger>
+                <TabsTrigger value="users" className="min-w-[120px] py-2 px-4 sm:min-w-0">Users</TabsTrigger>
+                <TabsTrigger value="departments" className="min-w-[120px] py-2 px-4 sm:min-w-0">Departments</TabsTrigger>
+                <TabsTrigger value="allotments" className="min-w-[120px] py-2 px-4 sm:min-w-0">Work Allotments</TabsTrigger>
+                <TabsTrigger value="tasks" className="min-w-[120px] py-2 px-4 sm:min-w-0">Tasks</TabsTrigger>
+              </TabsList>
             </div>
 
             <TabsContent value="overview" className="space-y-4">
