@@ -76,6 +76,9 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            {/* Route aliases for robustness if emails/apps link differently */}
+            <Route path="/auth/reset-password" element={<ResetPassword />} />
+            <Route path="/resetpassword" element={<ResetPassword />} />
             <Route path="/test-supabase" element={<TodosTest />} />
             <Route path="/test-db" element={<DatabaseTest />} />
             <Route path="/debug-profile" element={<ProfileDebugger />} />

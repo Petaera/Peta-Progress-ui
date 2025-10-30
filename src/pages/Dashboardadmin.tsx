@@ -236,18 +236,18 @@ const AdminDashboard = () => {
         {/* Header */}
         <header className="border-b bg-card shadow-soft">
           <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between gap-4 flex-col sm:flex-row sm:items-center">
+              <div className="flex items-center gap-4 w-full sm:w-auto">
                 <div className="h-10 w-10 rounded-xl gradient-primary flex items-center justify-center">
                   <span className="text-xl font-bold text-white">A</span>
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold">Admin Dashboard</h1>
-                  <p className="text-sm text-muted-foreground">{organization?.name}</p>
+                  <h1 className="text-lg sm:text-xl font-bold">Admin Dashboard</h1>
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate max-w-[70vw] sm:max-w-none">{organization?.name}</p>
                 </div>
               </div>
               
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 sm:gap-4 self-end sm:self-auto">
                 <Badge variant="secondary" className="bg-green-100 text-green-800">
                   Admin
                 </Badge>
@@ -274,7 +274,7 @@ const AdminDashboard = () => {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <Card className="shadow-soft">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -312,7 +312,8 @@ const AdminDashboard = () => {
 
           {/* Management Tabs */}
           <Tabs defaultValue="overview" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-6">
+            <div className="w-full overflow-x-auto">
+            <TabsList className="grid w-full min-w-max grid-cols-3 sm:grid-cols-6 gap-2">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="organizations">Organizations</TabsTrigger>
               <TabsTrigger value="users">Users</TabsTrigger>
@@ -320,6 +321,7 @@ const AdminDashboard = () => {
               <TabsTrigger value="allotments">Work Allotments</TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
             </TabsList>
+            </div>
 
             <TabsContent value="overview" className="space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -522,7 +524,7 @@ const AdminDashboard = () => {
                         <CardDescription>Quick overview of your team's performance metrics</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div className="text-center p-4 bg-white rounded-lg border">
                             <div className="text-2xl font-bold text-green-600">
                               {users.filter(u => u.availability_status === 'available').length}
@@ -598,15 +600,16 @@ const AdminDashboard = () => {
                         </DialogContent>
                       </Dialog>
                     </div>
-                    <Table>
+                    <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <Table className="min-w-[720px] sm:min-w-0">
                     <TableHeader>
                       <TableRow>
                         <TableHead>Name</TableHead>
                         <TableHead>Email</TableHead>
-                        <TableHead>Role</TableHead>
-                        <TableHead>Department</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Last Seen</TableHead>
+                        <TableHead className="hidden md:table-cell">Role</TableHead>
+                        <TableHead className="hidden lg:table-cell">Department</TableHead>
+                        <TableHead className="hidden lg:table-cell">Status</TableHead>
+                        <TableHead className="hidden xl:table-cell">Last Seen</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -615,20 +618,20 @@ const AdminDashboard = () => {
                         <TableRow key={user.id}>
                           <TableCell className="font-medium">{user.full_name}</TableCell>
                           <TableCell>{user.email}</TableCell>
-                          <TableCell>
+                          <TableCell className="hidden md:table-cell">
                             <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
                               {user.role}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden lg:table-cell">
                             {departments.find(d => d.id === user.department_id)?.name || 'No Department'}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="hidden lg:table-cell">
                             <Badge variant={user.availability_status === 'available' ? 'default' : 'secondary'}>
                               {user.availability_status}
                             </Badge>
                           </TableCell>
-                          <TableCell>{new Date(user.last_seen).toLocaleDateString()}</TableCell>
+                          <TableCell className="hidden xl:table-cell">{new Date(user.last_seen).toLocaleDateString()}</TableCell>
                           <TableCell>
                             <div className="flex gap-2">
                               <Dialog>
@@ -740,6 +743,7 @@ const AdminDashboard = () => {
                     </TableBody>
                   </Table>
                   </div>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -774,12 +778,13 @@ const AdminDashboard = () => {
                         </DialogContent>
                       </Dialog>
                     </div>
-                    <Table>
+                    <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <Table className="min-w-[640px] sm:min-w-0">
                       <TableHeader>
                         <TableRow>
                           <TableHead>Name</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead>Members</TableHead>
+                          <TableHead className="hidden md:table-cell">Created</TableHead>
+                          <TableHead className="hidden md:table-cell">Members</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -787,8 +792,8 @@ const AdminDashboard = () => {
                         {departments.map((dept) => (
                           <TableRow key={dept.id}>
                             <TableCell className="font-medium">{dept.name}</TableCell>
-                            <TableCell>{new Date(dept.created_at).toLocaleDateString()}</TableCell>
-                            <TableCell>
+                            <TableCell className="hidden md:table-cell">{new Date(dept.created_at).toLocaleDateString()}</TableCell>
+                            <TableCell className="hidden md:table-cell">
                               {users.filter(u => u.department_id === dept.id).length} members
                             </TableCell>
                             <TableCell>
@@ -798,6 +803,7 @@ const AdminDashboard = () => {
                         ))}
                       </TableBody>
                     </Table>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -834,14 +840,15 @@ const AdminDashboard = () => {
                         </DialogContent>
                       </Dialog>
                     </div>
-                    <Table>
+                    <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <Table className="min-w-[760px] sm:min-w-0">
                       <TableHeader>
                         <TableRow>
                           <TableHead>Title</TableHead>
-                          <TableHead>Department</TableHead>
-                          <TableHead>Target Hours</TableHead>
-                          <TableHead>Duration</TableHead>
-                          <TableHead>Tasks</TableHead>
+                          <TableHead className="hidden md:table-cell">Department</TableHead>
+                          <TableHead className="hidden md:table-cell">Target Hours</TableHead>
+                          <TableHead className="hidden lg:table-cell">Duration</TableHead>
+                          <TableHead className="hidden lg:table-cell">Tasks</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -849,14 +856,14 @@ const AdminDashboard = () => {
                         {workAllotments.map((allotment) => (
                           <TableRow key={allotment.id}>
                             <TableCell className="font-medium">{allotment.title}</TableCell>
-                            <TableCell>
+                            <TableCell className="hidden md:table-cell">
                               {departments.find(d => d.id === allotment.department_id)?.name || 'No Department'}
                             </TableCell>
-                            <TableCell>{allotment.target_hours}h</TableCell>
-                            <TableCell>
+                            <TableCell className="hidden md:table-cell">{allotment.target_hours}h</TableCell>
+                            <TableCell className="hidden lg:table-cell">
                               {allotment.start_date} - {allotment.end_date || 'Ongoing'}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="hidden lg:table-cell">
                               {tasks.filter(t => t.allotment_id === allotment.id).length} tasks
                             </TableCell>
                             <TableCell>
@@ -866,6 +873,7 @@ const AdminDashboard = () => {
                         ))}
                       </TableBody>
                     </Table>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -905,14 +913,15 @@ const AdminDashboard = () => {
                       </Dialog>
                     </div>
                     
-                    <Table>
+                    <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <Table className="min-w-[820px] sm:min-w-0">
                       <TableHeader>
                         <TableRow>
                           <TableHead>Title</TableHead>
-                          <TableHead>Assigned To</TableHead>
-                          <TableHead>Work Allotment</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Created</TableHead>
+                          <TableHead className="hidden md:table-cell">Assigned To</TableHead>
+                          <TableHead className="hidden lg:table-cell">Work Allotment</TableHead>
+                          <TableHead className="hidden md:table-cell">Status</TableHead>
+                          <TableHead className="hidden xl:table-cell">Created</TableHead>
                           <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -920,13 +929,13 @@ const AdminDashboard = () => {
                         {tasks.map((task) => (
                           <TableRow key={task.id}>
                             <TableCell className="font-medium">{task.title}</TableCell>
-                            <TableCell>
+                            <TableCell className="hidden md:table-cell">
                               {users.find(u => u.id === task.user_id)?.full_name || 'Unknown'}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="hidden lg:table-cell">
                               {workAllotments.find(w => w.id === task.allotment_id)?.title || 'Unknown'}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="hidden md:table-cell">
                               <Badge variant={
                                 task.status === 'done' ? 'default' : 
                                 task.status === 'in_progress' ? 'secondary' : 'outline'
@@ -934,7 +943,7 @@ const AdminDashboard = () => {
                                 {task.status}
                               </Badge>
                             </TableCell>
-                            <TableCell>{new Date(task.created_at).toLocaleDateString()}</TableCell>
+                            <TableCell className="hidden xl:table-cell">{new Date(task.created_at).toLocaleDateString()}</TableCell>
                             <TableCell>
                               <Button size="sm" variant="outline">Edit</Button>
                             </TableCell>
@@ -942,6 +951,7 @@ const AdminDashboard = () => {
                         ))}
                       </TableBody>
                     </Table>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
