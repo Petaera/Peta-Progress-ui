@@ -254,13 +254,19 @@ const AdminDashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization?.id, workAllotments.length]);
 
-  // Load recent activity and online users as soon as org is known
+  // Load online users as soon as org is known
   useEffect(() => {
     if (!organization?.id) return;
-    fetchRecentActivity();
     fetchOnlineUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization?.id]);
+
+  // Refetch recent activity when users are loaded so names resolve correctly
+  useEffect(() => {
+    if (!organization?.id || users.length === 0) return;
+    fetchRecentActivity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users.length, organization?.id]);
 
   const fetchAdminData = async () => {
     if (!authUser) return;
@@ -314,8 +320,8 @@ const AdminDashboard = () => {
 
         // After fetching allotments, refresh monthly stats
         await fetchAllotmentMonthlyStats();
-        // Kick off activity/online refresh without delaying the main load
-        fetchRecentActivity();
+        // Kick off online refresh without delaying the main load
+        // fetchRecentActivity will be called via useEffect once users are loaded
         fetchOnlineUsers();
       }
 
